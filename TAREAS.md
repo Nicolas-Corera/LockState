@@ -51,3 +51,31 @@
 
 ### Pendiente
 - Desplegar el Worker actualizado y probar el ciclo completo en VM + celular real.
+
+---
+
+## Fase 2 · Etapa 1 (continuación) — Correcciones tras pruebas en la VM
+**Fecha:** 2026-10-17 · **Rama:** `main`
+
+### Problemas reportados y qué se hizo
+1. **Cola offline no se aplicaba** (el cartel "pendiente" quedaba para siempre): en `src/Remote.cs` el `JsonDocument` del mensaje `queued` se liberaba (`using`) antes de que la tarea en segundo plano leyera los items. Ahora `ApplyQueued(string json)` parsea el JSON dentro del propio método, aplica y envía `qack`.
+2. **Gracia / horario no se reflejaban**: el panel de la PC se refresca por `!CFG` (requiere recompilar la app). En el celular, el editor de horario ahora pide el estado fresco a `/api/status` cada vez que se abre (antes usaba `lastDias` en caché).
+3. **Pendientes**: `worker.js` → `pendientes()` devuelve el detalle de cada cambio (`cmd`, `min`, `seg`, `dias`). En la PWA el cartel pasó a ser un botón "Pendientes de aplicar (N) ›" que abre un modal scrolleable (ej.: *Horario → Lunes de 08:00 a 20:00*).
+4. **Seguridad**: al llegar un `hello` con `phoneKey` distinta (celular revocado/revinculado) el servidor borra toda la cola `q:*`.
+5. **Selector de horario (24 h)**: hubo varios intentos. Se cambió el diseño sin que se pidiera (dos desplegables hora/minuto) → se revirtió a `<input type="time">` → `lang="en-GB"` y `lang="es-AR"` no lograron 24 h en Android → campo de texto con máscara (descartado). **Solución final:** un `<select>` por campo (Inicio y Fin) con horas 24 h **cada 15 min** (00/15/30/45), igual que la PC, `width:100%` para que no desborde. Validación `fin > inicio` al guardar.
+
+### Archivos tocados
+`src/Remote.cs`, `server/src/worker.js`, `server/public/index.html`.
+
+### Cómo desplegar / probar (la app se compila y prueba en la VM, usuario `testeos`)
+- Servidor (Worker + PWA): `cd <ruta>\LockState\server` → `npx wrangler deploy`.
+- App (VM): `cd C:\Users\testeos\Documents\LockState\src` → `dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ..\publish` → doble clic a `publish\BloqueadorHorario.exe` y poner la contraseña existente (el `.exe` es el instalador; **no** se usa `install.ps1`).
+
+### Reglas del proyecto (recordatorio)
+- Uso máx. 4 % del límite de 5 h por tarea (el usuario pidió 2-3 % en estas correcciones). Mínima exploración.
+- Commit + push de todo, sin preguntar; autor siempre el usuario, nunca Claude.
+- Actualizar este archivo al terminar **cada** tarea.
+- Dar siempre los comandos de deploy/compilación.
+
+### Pendiente / conocido
+- Hallazgos de seguridad del servidor ya existentes (no tocados por pedido): código de vinculación de 6 dígitos sin límite de intentos y `/api/regstore` expuesto vía `id=__dir__`; valores `Start/End` interpolados en HTML.
