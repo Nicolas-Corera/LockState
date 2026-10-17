@@ -136,6 +136,13 @@ export class PcRoom {
 
     if (m.t === "hello") {
       if (this.pcToken && this.pcToken !== m.token) { try { server.close(1008, "token"); } catch {} return; }
+      // Si la phoneKey cambió (el usuario revocó/revinculó el celular), la cola vieja es de un celular
+      // ya revocado: se descarta entera para que no se apliquen sus comandos pendientes.
+      const keyChanged = this.phoneKey != null && this.phoneKey !== m.phoneKey;
+      if (keyChanged) {
+        const q = await this.state.storage.list({ prefix: "q:" });
+        for (const k of q.keys()) await this.state.storage.delete(k);
+      }
       this.pc = server;
       this.pcToken = m.token;
       this.phoneKey = m.phoneKey;
