@@ -292,8 +292,8 @@ class PanelForm : Form
         var addF = Ui.B(pRes, "Agregar archivo/exe…", 12, 432, 210, 40);
         var addD = Ui.B(pRes, "Agregar carpeta…", 234, 432, 210, 40);
         var del = Ui.B(pRes, "Quitar", 456, 432, 140, 40);
-        addF.Click += (_, _) => { using var o = new OpenFileDialog { Title = "Elegí el archivo o ejecutable a bloquear" }; if (o.ShowDialog(this) == DialogResult.OK) AddItem(o.FileName, "archivo"); };
-        addD.Click += (_, _) => { using var o = new FolderBrowserDialog { Description = "Elegí la carpeta a bloquear" }; if (o.ShowDialog(this) == DialogResult.OK) AddItem(o.SelectedPath, "carpeta"); };
+        addF.Click += (_, _) => { using var o = new OpenFileDialog { Title = "Elegí el archivo o ejecutable a bloquear", InitialDirectory = @"C:\", RestoreDirectory = true }; if (o.ShowDialog(this) == DialogResult.OK) AddItem(o.FileName, "archivo"); };
+        addD.Click += (_, _) => { using var o = new FolderBrowserDialog { Description = "Elegí la carpeta a bloquear", RootFolder = Environment.SpecialFolder.MyComputer, InitialDirectory = @"C:\" }; if (o.ShowDialog(this) == DialogResult.OK) AddItem(o.SelectedPath, "carpeta"); };
         del.Click += (_, _) => { int i = clb.SelectedIndex; if (i >= 0) { clb.Items.RemoveAt(i); bloq.RemoveAt(i); MarkDirty(); } };
         Ui.L(pRes, "Bloquear internet", 12, 492, 0, 11, true);
         inet = new CheckBox { Left = 190, Top = 486, Width = 120, Height = 30, Appearance = Appearance.Button, FlatStyle = FlatStyle.Flat, BackColor = Ui.Fld, ForeColor = Ui.Fg, TextAlign = ContentAlignment.MiddleCenter, Cursor = Cursors.Hand };
