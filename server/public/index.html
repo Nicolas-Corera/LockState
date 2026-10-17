@@ -260,7 +260,7 @@ function manualCode(){
 }
 
 // ---------- Pantalla 2: Mi PC ----------
-let pollTimer=null, lastDias=null, ws=null, mainRefs=null;
+let pollTimer=null, lastDias=null, ws=null, mainRefs=null, shuttingDown=false;
 
 function closeWs(){ try{ if(ws){ ws.onclose=null; ws.close(); } }catch{} ws=null; }
 function openWs(){
@@ -348,7 +348,8 @@ function paintStatus(card, d, addBtn, offBtn){
   else { dotColor='var(--green)'; connTxt='Conectada'; badge=[ 'b-green', (s&&s.restriHoy)?'En horario':'Libre' ]; }
 
   // Apagar solo online. Extra/horario/gracia se permiten offline: se guardan en la nube y se aplican al encender.
-  addBtn.disabled=false; offBtn.disabled=!online;
+  addBtn.disabled=false; offBtn.disabled=!online||shuttingDown;
+  if(shuttingDown){ offBtn.innerHTML=`${I.powerSm}<span>Apagando…</span>`; }
 
   const rows=[];
   rows.push(['Última señal', s&&s.ahora? fmtFecha(s.ahora): '—']);
@@ -404,14 +405,16 @@ function fmtFecha(s){ // "2026-10-17 08:45:xx" -> "Hoy, 08:45" si es hoy
 
 async function doCmd(btn, body, okMsg){
   const old=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+  let d=null;
   try{
-    const d=await api('/api/cmd',{method:'POST',body:JSON.stringify(body)});
+    d=await api('/api/cmd',{method:'POST',body:JSON.stringify(body)});
     if(d.queued){ toast(d.msg||'Guardado; se aplicará al encender la PC'); refreshOnce(); }
     else if(d.online===false) toast('La PC está desconectada');
     else if(d.ok) toast(okMsg||d.msg||'Listo');
     else toast(d.msg||'No se pudo');
   }catch{ toast('Error de conexión'); }
   btn.disabled=false; btn.innerHTML=old;
+  return d;
 }
 
 // ---------- Pestañas Control / Restricciones ----------
@@ -446,24 +449,36 @@ async function loadRestric(){
 }
 function renderRestric(body, online){
   body.innerHTML='';
-  const pend = lastPend && lastPend.length ? lastPend.filter(p=>['internet','bloq_set','bloq_del'].includes(p.cmd)) : null;
-  if(pend && pend.length){
-    const pb=$(`<button class="badge b-orange" style="margin:0 0 12px;width:100%;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">⏳ Pendientes de aplicar (${pend.length}) ›</button>`);
-    pb.onclick=()=>showPendientes(pend);
+  // Estado efectivo = estado base (lo que la PC confirmó) + pendientes encolados en la nube.
+  // Así el cambio NO desaparece al recargar con la PC apagada: se ve con una marca "(pendiente)".
+  const pend = (lastPend||[]).filter(p=>['internet','bloq_set','bloq_del'].includes(p.cmd));
+  let effInet = lastInet;
+  let effBloq = (lastBloq||[]).map(b=>({...b, _pend:false}));
+  pend.forEach(p=>{
+    if(p.cmd==='internet') effInet=!!p.sinInternet;
+    else if(p.cmd==='bloq_set'){ const b=effBloq.find(x=>x.Id===p.id); if(b){ b.Activo=!!p.activo; b._pend=true; } }
+    else if(p.cmd==='bloq_del'){ const b=effBloq.find(x=>x.Id===p.id); if(b) b._pend='del'; }
+  });
+  const mk=(txt)=>` <span style="color:var(--orange);font-size:12px">(${txt})</span>`;
+  if(pend.length){
+    const pb=$(`<div style="margin:0 0 14px;text-align:center"><button style="background:none;border:none;color:var(--blue);text-decoration:underline;font-size:15px;cursor:pointer;padding:4px">Pendientes de aplicar (${pend.length})</button></div>`);
+    pb.querySelector('button').onclick=()=>showPendientes(pend);
     body.appendChild(pb);
   }
+  const inetPend = pend.some(p=>p.cmd==='internet');
   const inetCard=$(`<div class="card" style="padding:14px"><div class="itemrow" style="margin:0;background:none;padding:0">
-     <div class="ic">${I.globe}</div><div class="info"><div class="nm">Bloquear internet</div>
+     <div class="ic">${I.globe}</div><div class="info"><div class="nm">Bloquear internet${inetPend?mk('pendiente'):''}</div>
      <div class="pt">Corta la red del equipo mientras está en uso</div></div>
-     <div class="sw ${lastInet?'on':''}" id="inet"><i></i></div></div></div>`);
+     <div class="sw ${effInet?'on':''}" id="inet"><i></i></div></div></div>`);
   body.appendChild(inetCard);
-  inetCard.querySelector('#inet').onclick=()=>cmdRestric({cmd:'internet',sinInternet:!lastInet}, (!lastInet)?'Internet bloqueado':'Internet habilitado');
+  inetCard.querySelector('#inet').onclick=()=>cmdRestric({cmd:'internet',sinInternet:!effInet}, (!effInet)?'Internet bloqueado':'Internet habilitado');
 
   body.appendChild($(`<div class="sec-title">${I.shield} Archivos y carpetas</div>`));
-  if(!lastBloq.length) body.appendChild($(`<div class="muted" style="margin:-4px 0 14px">No hay nada bloqueado todavía.</div>`));
-  lastBloq.forEach(b=>{
-    const row=$(`<div class="itemrow"><div class="ic">${b.Tipo==='carpeta'?I.folder:I.file}</div>
-      <div class="info"><div class="nm">${nameOf(b.Ruta)}</div><div class="pt">${b.Ruta}</div></div>
+  if(!effBloq.length) body.appendChild($(`<div class="muted" style="margin:-4px 0 14px">No hay nada bloqueado todavía.</div>`));
+  effBloq.forEach(b=>{
+    const tag = b._pend==='del'?mk('se quitará') : (b._pend?mk('pendiente'):'');
+    const row=$(`<div class="itemrow" style="${b._pend==='del'?'opacity:.6':''}"><div class="ic">${b.Tipo==='carpeta'?I.folder:I.file}</div>
+      <div class="info"><div class="nm">${nameOf(b.Ruta)}${tag}</div><div class="pt">${b.Ruta}</div></div>
       <div class="sw ${b.Activo?'on':''}"><i></i></div>
       <button class="trash">${I.trash}</button></div>`);
     row.querySelector('.sw').onclick=()=>cmdRestric({cmd:'bloq_set',id:b.Id,activo:!b.Activo},'Actualizado');
@@ -485,7 +500,7 @@ async function cmdRestric(payload, okMsg){
   let online=true;
   try{
     const d=await api('/api/cmd',{method:'POST',body:JSON.stringify(payload)});
-    if(d.queued){ toast(d.msg||'Guardado; se aplicará al encender la PC'); applyOptimistic(payload); online=false; }
+    if(d.queued){ toast(d.msg||'Guardado; se aplicará al encender la PC'); online=false; }
     else if(d.online===false){ toast('La PC está desconectada'); online=false; }
     else if(!d.ok) toast(d.msg||'No se pudo');
     else { toast(okMsg||'Listo'); if(d.status){ lastBloq=d.status.bloqueos||lastBloq; if(d.status.sinInternet!==undefined) lastInet=!!d.status.sinInternet; } }
@@ -545,7 +560,11 @@ function confirmShutdown(srcBtn){
      </div></div>`);
   document.body.appendChild(ov);
   ov.querySelector('#c').onclick=()=>ov.remove();
-  ov.querySelector('#k').onclick=async(e)=>{ await doCmd(e.target,{cmd:'apagar'},'Orden de apagado enviada'); ov.remove(); };
+  ov.querySelector('#k').onclick=async(e)=>{
+    const d=await doCmd(e.target,{cmd:'apagar'},'Orden de apagado enviada'); ov.remove();
+    if(d&&d.ok&&srcBtn){ shuttingDown=true; srcBtn.disabled=true; srcBtn.innerHTML=`${I.powerSm}<span>Apagando…</span>`;
+      if(mainRefs){ try{ mainRefs.addBtn.disabled=true; mainRefs.grBtn.disabled=true; }catch{} } }
+  };
 }
 
 // ---------- Pantalla 3: Horario semanal ----------
