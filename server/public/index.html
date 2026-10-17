@@ -405,6 +405,14 @@ function viewSchedule(){
                     .catch(()=>{ if(!lastDias) lastDias=def; renderSchedule(); });
 }
 
+// Un solo select por campo, horas 24h cada 30 min (como en la PC).
+function tsel(val,dis){
+  const st='width:100%;background:var(--field);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:10px 8px;font-size:16px';
+  let o='<option value="">--:--</option>';
+  for(let h=0;h<24;h++)for(const m of['00','30']){const v=String(h).padStart(2,'0')+':'+m;o+=`<option value="${v}" ${v===val?'selected':''}>${v}</option>`;}
+  return `<select style="${st}" ${dis?'disabled':''}>${o}</select>`;
+}
+
 function renderSchedule(){
   mainRefs=null;   // en esta pantalla no repintamos el estado en vivo
   app.innerHTML='';
@@ -420,16 +428,11 @@ function renderSchedule(){
       <div class="chk ${d.Restricted?'on':''}">${I.check}</div>
       <div class="name">${DIAS[i]}</div>
       <div class="times">
-        <div class="tbox"><label>Inicio</label><input type="text" inputmode="numeric" maxlength="5" placeholder="--:--" value="${d.Start||''}" ${d.Restricted?'':'disabled'}></div>
-        <div class="tbox"><label>Fin</label><input type="text" inputmode="numeric" maxlength="5" placeholder="--:--" value="${d.End||''}" ${d.Restricted?'':'disabled'}></div>
+        <div class="tbox"><label>Inicio</label>${tsel(d.Start,!d.Restricted)}</div>
+        <div class="tbox"><label>Fin</label>${tsel(d.End,!d.Restricted)}</div>
       </div></div>`);
-    const chk=row.querySelector('.chk'), ins=row.querySelectorAll('input');
+    const chk=row.querySelector('.chk'), ins=row.querySelectorAll('select');
     chk.onclick=()=>{ const on=!chk.classList.contains('on'); chk.classList.toggle('on',on); ins.forEach(x=>x.disabled=!on); };
-    ins.forEach(x=>x.addEventListener('input',()=>{   // máscara HH:MM en 24 h
-      let v=x.value.replace(/\D/g,'').slice(0,4);
-      if(v.length>=3) v=v.slice(0,2)+':'+v.slice(2);
-      x.value=v;
-    }));
     list.appendChild(row);
   });
 
@@ -439,9 +442,8 @@ function renderSchedule(){
     const rows=[...list.querySelectorAll('.day')]; const out=[];
     for(const r of rows){
       const on=r.querySelector('.chk').classList.contains('on');
-      const [s,f]=[...r.querySelectorAll('input')].map(x=>x.value);
-      const ok=v=>/^([01]\d|2[0-3]):[0-5]\d$/.test(v);
-      if(on&&(!ok(s)||!ok(f)||f<=s)){ return toast('Revisá los horarios (HH:MM 24h, fin posterior al inicio)'); }
+      const [s,f]=[...r.querySelectorAll('select')].map(x=>x.value);
+      if(on&&(!s||!f||f<=s)){ return toast('Revisá los horarios (elegí inicio y fin, fin posterior al inicio)'); }
       out.push({Restricted:on, Start:on?s:null, End:on?f:null});
     }
     await doCmd(e.target,{cmd:'horario',dias:out},'Horario guardado');
