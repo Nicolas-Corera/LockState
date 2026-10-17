@@ -76,7 +76,9 @@ Arquitectura: `Celular (PWA) --HTTPS--> Worker Cloudflare (Durable Object) <--We
 - Panel (`src/Ui.cs` → `RemoteForm`): URL del servidor, "Vincular celular" (muestra QR con `QRCoder` + código de 6 dígitos), "Desvincular", "Desactivar remoto". Comandos por pipe: `RGET/RSET/RCODE/RUNLINK/ROFF`.
 - Servidor: `server/` (Cloudflare Worker + DO `PcRoom`). Ver `server/README.md` para desplegar (`wrangler deploy`, plan gratis, DO SQLite).
 - PWA: `server/public/index.html` (4 pantallas + lector QR con `jsQR`), `manifest.webmanifest`, `sw.js`, `icon.svg`. Login local sin servidor (nombre + contraseña opcional guardada solo en el celu); vínculo real = QR/código.
-- Seguridad: si la PC está offline el servidor no encola nada; tope de extra aplicado en la PC; el remoto nunca lee/cambia la contraseña del programa.
+- Seguridad: tope de extra aplicado en la PC; el remoto nunca lee/cambia la contraseña del programa.
+- **Sincronización en vivo (Fase 2 · Etapa 1):** el servicio emite `!CFG` por el pipe al cambiar la config desde el celular → el panel abierto se recarga solo (sin pisar ediciones sin guardar: aparece aviso + botón "Recargar"). Ver `TAREAS.md`.
+- **Cola offline (Fase 2 · Etapa 1):** con la PC apagada, el DO guarda `extra`/`gracia`/`horario` (último gana, una entrada por tipo); `apagar` nunca se encola. Al conectar la PC (`hello`), el servidor reenvía (`queued`), la PC aplica y confirma (`qack`). `extra` solo si es del mismo día; `horario`/`gracia` se descartan si hubo cambio local más nuevo (`Cfg.LocalChangedTs`); items >30 días se descartan. La PWA muestra chip de pendientes y permite encolar offline.
 
 ## 7. Próximos pasos
 1. Compilar en la VM y corregir errores de compilación si los hay.

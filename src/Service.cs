@@ -136,6 +136,7 @@ class Engine : ICommands
         {
             cfg.ExtraMinutes = Math.Clamp(min, 0, 1440); cfg.ExtraDate = Clock.Now.ToString("yyyy-MM-dd");
             Store.Save(cfg); Log.W($"Tiempo extra de hoy: {cfg.ExtraMinutes} min");
+            Broadcast("!CFG");
         }
         RPush();
     }
@@ -149,7 +150,7 @@ class Engine : ICommands
         {
             if (n.Days.Length != 7) throw new Exception("Horario inválido");
             if (!Scheduler.ParseShortcut(n.Shortcut, out _, out _)) throw new Exception("Atajo inválido");
-            cfg.Days = n.Days;
+            cfg.Days = n.Days; cfg.LocalChangedTs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             cfg.GraceSeconds = Math.Clamp(n.GraceSeconds, 5, 600);
             cfg.Shortcut = n.Shortcut;
             cfg.MaintMinutes = Math.Clamp(n.MaintMinutes, 0, 1440);
@@ -249,6 +250,7 @@ class Engine : ICommands
             cfg.GraceSeconds = Math.Clamp(seg, 5, 600); Store.Save(cfg);
             if (lockActive) deadline = Clock.Now.AddSeconds(cfg.GraceSeconds);
             Log.W($"Ventana de gracia: {cfg.GraceSeconds} s (desde el celular)");
+            Broadcast("!CFG");
         }
         RPush();
     }
@@ -264,9 +266,12 @@ class Engine : ICommands
                     throw new Exception("Horario de un día inválido");
             cfg.Days = dias; Store.Save(cfg);
             Log.W("Horario cambiado desde el celular");
-            Broadcast(StateMsg()); RPush();
+            Broadcast(StateMsg()); Broadcast("!CFG"); RPush();
         }
     }
+
+    /// <summary>Cola offline: ts = momento (ms UTC) en que el celular pidió el cambio.</summary>
+    public bool RemoteLocalNewerThan(long ts) { lock (L) return cfg.LocalChangedTs > ts; }
 
     // ---------- Named pipe (solo SYSTEM: el agente corre como SYSTEM) ----------
     void PipeLoop()

@@ -250,7 +250,7 @@ function openWs(){
 }
 function applyStatus(d){
   if(d&&d.status&&d.status.dias) lastDias=d.status.dias;
-  if(mainRefs){ paintStatus(mainRefs.card, d||{online:false}, mainRefs.addBtn, mainRefs.offBtn); mainRefs.grBtn.disabled=!(d&&d.online); }
+  if(mainRefs){ paintStatus(mainRefs.card, d||{online:false}, mainRefs.addBtn, mainRefs.offBtn); mainRefs.grBtn.disabled=false; }
 }
 function revoked(){ closeWs(); clearInterval(pollTimer); LS.del('ch_pair'); toast('La PC te desvinculó. Volvé a vincular.'); render(); }
 async function refreshOnce(){
@@ -320,7 +320,8 @@ function paintStatus(card, d, addBtn, offBtn){
   else if(s&&!s.permitido){ dotColor='var(--orange)'; connTxt='Conectada'; badge=['b-orange','Fuera de horario']; }
   else { dotColor='var(--green)'; connTxt='Conectada'; badge=[ 'b-green', (s&&s.restriHoy)?'En horario':'Libre' ]; }
 
-  addBtn.disabled=!online; offBtn.disabled=!online;
+  // Apagar solo online. Extra/horario/gracia se permiten offline: se guardan en la nube y se aplican al encender.
+  addBtn.disabled=false; offBtn.disabled=!online;
 
   const rows=[];
   rows.push(['Última señal', s&&s.ahora? fmtFecha(s.ahora): '—']);
@@ -336,6 +337,12 @@ function paintStatus(card, d, addBtn, offBtn){
      <div class="conn"><span class="dot" style="background:${dotColor}"></span><span style="color:${dotColor}">${connTxt}</span></div>
      <span class="badge ${badge[0]}">${badge[1]}</span></div>`));
   if(!online) card.appendChild($(`<div class="muted" style="font-size:13px;margin:-4px 0 6px">Puede estar apagada o sin internet.</div>`));
+  const pend = s && s.pendientes && s.pendientes.length ? s.pendientes : null;
+  if(pend){
+    const nombres={extra:'tiempo extra',gracia:'tiempo de gracia',horario:'horario'};
+    const txt=pend.map(x=>nombres[x]||x).join(', ');
+    card.appendChild($(`<div class="badge b-orange" style="margin:2px 0 8px">⏳ Pendiente de aplicar: ${txt}</div>`));
+  }
   rows.forEach(r=>card.appendChild($(`<div class="row"><span class="k">${r[0]}</span><span class="v">${r[1]}</span></div>`)));
 }
 
@@ -348,7 +355,8 @@ async function doCmd(btn, body, okMsg){
   const old=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
   try{
     const d=await api('/api/cmd',{method:'POST',body:JSON.stringify(body)});
-    if(d.online===false) toast('La PC está desconectada');
+    if(d.queued){ toast(d.msg||'Guardado; se aplicará al encender la PC'); refreshOnce(); }
+    else if(d.online===false) toast('La PC está desconectada');
     else if(d.ok) toast(okMsg||d.msg||'Listo');
     else toast(d.msg||'No se pudo');
   }catch{ toast('Error de conexión'); }

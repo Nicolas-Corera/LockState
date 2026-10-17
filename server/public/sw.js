@@ -1,6 +1,6 @@
 // Service worker mínimo: cachea el "shell" para que la app abra sin conexión.
 // NO cachea /api ni /pc (siempre a la red).
-const CACHE = 'ch-v2';
+const CACHE = 'ch-v3';
 
 self.addEventListener('install', (e) => { self.skipWaiting(); });
 self.addEventListener('activate', (e) => {

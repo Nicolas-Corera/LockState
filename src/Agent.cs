@@ -70,6 +70,7 @@ static class Link
 
 static class Agent
 {
+    public static event Action? CfgChanged;   // el servicio avisa que la config cambió (p. ej. desde el celular)
     static volatile bool locked, modalOpen, flowActive;
     static int scMods, scVk, timeoutSec = 20;
     static bool cD, aD, sD, wD;
@@ -100,6 +101,7 @@ static class Agent
     // "!STATE <lock 0|1> <atajo> <timeoutModal>"
     static void OnPush(string line)
     {
+        if (line == "!CFG") { CfgChanged?.Invoke(); return; }
         var p = line.Split(' ');
         if (p.Length < 4 || p[0] != "!STATE") return;
         locked = p[1] == "1";

@@ -91,6 +91,7 @@ class Remote : IRemoteChannel
             var root = doc.RootElement;
             var t = root.GetProperty("t").GetString();
             if (t == "code") { codeWaiter?.TrySetResult(root.TryGetProperty("code", out var c) ? c.GetString() : null); return; }
+            if (t == "queued") { _ = Task.Run(() => ApplyQueued(root.GetProperty("items"), ct)); return; }
             if (t == "cmd")
             {
                 var id = root.TryGetProperty("id", out var idp) ? idp.GetString() : null;
@@ -133,6 +134,49 @@ class Remote : IRemoteChannel
         }
         catch (Exception e) { ok = false; msg = e.Message; }
         try { await SendObj(new { t = "res", id, ok, msg, data = engine.RemoteStatus() }, ct); } catch { }
+    }
+
+    /// <summary>Aplica los comandos que quedaron en la cola mientras la PC estuvo apagada (los que llegaron por "queued").</summary>
+    async Task ApplyQueued(JsonElement items, CancellationToken ct)
+    {
+        var aplicados = new List<string>();
+        foreach (var it in items.EnumerateArray())
+        {
+            var cmd = it.GetProperty("cmd").GetString();
+            long ts = it.TryGetProperty("ts", out var tsp) && tsp.ValueKind == JsonValueKind.Number ? tsp.GetInt64() : 0;
+            try
+            {
+                switch (cmd)
+                {
+                    case "extra":
+                        // El extra vale solo el día en que se pidió: si ya es otro día, se descarta (pero igual se confirma).
+                        var pedido = DateTimeOffset.FromUnixTimeMilliseconds(ts).ToLocalTime().Date;
+                        if (ts != 0 && pedido == DateTime.Now.Date)
+                        {
+                            int min = it.TryGetProperty("min", out var m) ? m.GetInt32() : 0;
+                            engine.AgregarTiempoExtra(Math.Clamp(min, 0, engine.RemoteExtraCap));
+                            Log.W("Remoto (cola): tiempo extra aplicado");
+                        }
+                        else Log.W("Remoto (cola): extra descartado (de otro día)");
+                        break;
+                    case "gracia":
+                        if (engine.RemoteLocalNewerThan(ts)) { Log.W("Remoto (cola): gracia descartada (cambio local más nuevo)"); break; }
+                        engine.RemoteSetGrace(it.TryGetProperty("seg", out var sg) ? sg.GetInt32() : 30);
+                        Log.W("Remoto (cola): gracia aplicada");
+                        break;
+                    case "horario":
+                        if (engine.RemoteLocalNewerThan(ts)) { Log.W("Remoto (cola): horario descartado (cambio local más nuevo)"); break; }
+                        var dias = JsonSerializer.Deserialize<DayCfg[]>(it.GetProperty("dias").GetRawText())!;
+                        engine.RemoteSetDays(dias);
+                        Log.W("Remoto (cola): horario aplicado");
+                        break;
+                }
+                if (cmd != null) aplicados.Add(cmd);   // confirmado (aplicado o descartado a propósito) -> el servidor lo borra
+            }
+            catch (Exception e) { Log.W("Remoto (cola): error en " + cmd + ": " + e.Message); }
+        }
+        if (aplicados.Count > 0)
+            try { await SendObj(new { t = "qack", cmds = aplicados }, ct); } catch { }
     }
 
     /// <summary>Pide al servidor un código de vinculación de un solo uso (bloqueante, con timeout).</summary>
