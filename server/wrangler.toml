@@ -1,0 +1,17 @@
+name = "control-horario"
+main = "src/worker.js"
+compatibility_date = "2024-09-23"
+
+# PWA (archivos estáticos de ./public). Las rutas /pc y /api/* las maneja el Worker.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[durable_objects.bindings]]
+name = "PCROOM"
+class_name = "PcRoom"
+
+# SQLite-backed DO: habilitado en el plan GRATIS de Cloudflare.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PcRoom"]

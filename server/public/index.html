@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0d12">
+<title>Control de Horario</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg">
+<style>
+  :root{
+    --bg:#0b0d12; --card:#161a22; --card2:#1b2029; --field:#1e232c; --line:#2a2f3a;
+    --fg:#e8eaed; --mut:#9aa0ab; --blue:#4f8cff; --blue2:#3b7de9;
+    --green:#35c66b; --red:#ef4444; --orange:#f59e0b;
+  }
+  *{box-sizing:border-box} html,body{margin:0}
+  body{background:var(--bg);color:var(--fg);font-family:-apple-system,Segoe UI,Roboto,system-ui,sans-serif;
+    -webkit-font-smoothing:antialiased;min-height:100vh}
+  .wrap{max-width:460px;margin:0 auto;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+  h1{font-size:30px;font-weight:800;text-align:center;margin:8px 0 4px}
+  .logo{display:flex;justify-content:center;margin:24px 0 4px}
+  .card{background:var(--card);border-radius:18px;padding:20px;margin:16px 0}
+  .muted{color:var(--mut)} .center{text-align:center}
+  label{display:block;font-size:13px;color:var(--mut);margin:0 0 6px}
+  .field{display:flex;align-items:center;gap:10px;background:var(--field);border:1px solid var(--line);
+    border-radius:14px;padding:0 14px;margin-bottom:14px}
+  .field svg{flex:none;color:var(--mut)}
+  .field input{flex:1;background:none;border:none;outline:none;color:var(--fg);font-size:16px;padding:16px 0}
+  .field .ic-btn{background:none;border:none;color:var(--mut);cursor:pointer;padding:6px}
+  button{font-family:inherit}
+  .btn{width:100%;border:none;border-radius:14px;padding:16px;font-size:16px;font-weight:600;cursor:pointer}
+  .btn.primary{background:var(--blue);color:#fff}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--fg)}
+  .btn.outline-blue{background:transparent;border:1px solid var(--blue2);color:var(--blue)}
+  .btn.danger-out{background:transparent;border:1px solid var(--red);color:var(--red);display:flex;gap:10px;justify-content:center;align-items:center}
+  .btn.danger{background:var(--red);color:#fff}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .link{display:block;text-align:center;color:var(--blue);background:none;border:none;margin-top:14px;font-size:15px;cursor:pointer;width:100%}
+  .hr{height:1px;background:var(--line);margin:22px 0}
+  .topbar{display:flex;align-items:center;justify-content:space-between;padding:6px 2px 10px}
+  .topbar h2{font-size:22px;font-weight:800;margin:0}
+  .iconbtn{background:none;border:none;color:var(--blue);cursor:pointer;padding:6px}
+  .row{display:flex;align-items:center;justify-content:space-between;padding:14px 0;border-top:1px solid var(--line)}
+  .row:first-of-type{border-top:none}
+  .row .k{color:var(--fg)} .row .v{color:var(--mut)}
+  .status-head{display:flex;align-items:center;gap:12px;margin-bottom:4px}
+  .status-head .t{font-size:20px;font-weight:700}
+  .dot{width:12px;height:12px;border-radius:50%;display:inline-block}
+  .conn{display:flex;align-items:center;gap:10px;font-weight:600}
+  .badge{border:1px solid;border-radius:10px;padding:6px 12px;font-size:14px;font-weight:600}
+  .b-green{color:var(--green);border-color:#1f5c38}
+  .b-orange{color:var(--orange);border-color:#5c4a1f}
+  .b-red{color:var(--red);border-color:#5c2525}
+  .b-gray{color:var(--mut);border-color:var(--line)}
+  .sec-title{display:flex;align-items:center;gap:10px;font-size:19px;font-weight:700;margin-bottom:14px}
+  .num{display:flex;align-items:stretch;background:var(--field);border:1px solid var(--line);border-radius:12px;overflow:hidden;margin-bottom:14px}
+  .num input{flex:1;background:none;border:none;outline:none;color:var(--fg);font-size:18px;padding:14px 16px}
+  .num .steps{display:flex;flex-direction:column;border-left:1px solid var(--line)}
+  .num .steps button{flex:1;background:none;border:none;color:var(--mut);padding:0 12px;cursor:pointer}
+  .day{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px;display:flex;align-items:center;gap:12px}
+  .day .chk{width:26px;height:26px;border-radius:7px;border:2px solid var(--line);flex:none;display:flex;align-items:center;justify-content:center;cursor:pointer;background:var(--field)}
+  .day .chk.on{background:var(--blue);border-color:var(--blue)}
+  .day .chk svg{color:#fff;display:none} .day .chk.on svg{display:block}
+  .day .name{font-size:17px;font-weight:700;flex:1}
+  .day .times{display:flex;gap:10px}
+  .tbox{width:84px;text-align:center}
+  .tbox label{text-align:center;font-size:12px}
+  .tbox input{width:100%;background:var(--field);border:1px solid var(--line);border-radius:10px;color:var(--fg);
+    padding:10px 4px;text-align:center;font-size:15px;outline:none}
+  .tbox input:disabled{color:var(--mut);opacity:.6}
+  .sticky{position:sticky;bottom:0;background:linear-gradient(transparent,var(--bg) 24%);padding-top:16px}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.78);display:flex;align-items:center;justify-content:center;padding:24px;z-index:50}
+  .dialog{background:var(--card2);border-radius:20px;padding:26px;max-width:360px;width:100%;text-align:center}
+  .dialog h3{font-size:22px;font-weight:800;margin:14px 0 8px}
+  .dialog p{color:var(--mut);margin:0 0 22px}
+  .dialog .acts{display:flex;gap:12px} .dialog .acts .btn{padding:14px}
+  .toast{position:fixed;left:50%;bottom:28px;transform:translateX(-50%);background:#20252f;border:1px solid var(--line);
+    color:var(--fg);padding:12px 18px;border-radius:12px;z-index:60;max-width:90%;text-align:center;font-size:15px}
+  .codein{width:100%;text-align:center;letter-spacing:10px;font-size:30px;font-weight:700;background:var(--field);color:var(--fg);
+    border:1px solid var(--line);border-radius:14px;padding:14px 8px;outline:none;margin-bottom:8px}
+  .codein:focus{border-color:var(--blue)}
+  .err{color:var(--red);min-height:20px;font-size:14px;margin-bottom:12px}
+  .hidden{display:none!important}
+  .spin{width:18px;height:18px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;
+    display:inline-block;animation:sp .7s linear infinite;vertical-align:-3px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+// ---------- utilidades ----------
+const $ = (h) => { const d=document.createElement('div'); d.innerHTML=h.trim(); return d.firstChild; };
+const app = document.getElementById('app');
+const API = location.origin;
+const LS = {
+  get:(k)=>{try{return JSON.parse(localStorage.getItem(k))}catch{return null}},
+  set:(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch{}},
+  del:(k)=>{try{localStorage.removeItem(k)}catch{}},
+};
+const DIAS = ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado","Domingo"];
+let unlocked = false;   // sesión local (no persiste)
+
+function toast(msg){ const t=$(`<div class="toast">${msg}</div>`); document.body.appendChild(t); setTimeout(()=>t.remove(),2600); }
+async function sha(s){ const b=await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return btoa(String.fromCharCode(...new Uint8Array(b))); }
+const pair = () => LS.get('ch_pair');
+
+async function api(path, opts={}){
+  const pr = pair(); if(!pr) throw new Error('sin vínculo');
+  const r = await fetch(`${API}${path}?id=${encodeURIComponent(pr.id)}`, {
+    ...opts, headers:{ 'Authorization':'Bearer '+pr.key, 'content-type':'application/json', ...(opts.headers||{}) }
+  });
+  return r.json();
+}
+
+// SVG íconos
+const I = {
+  clock:'<svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="#4f8cff" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  mail:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+  lock:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>',
+  eye:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg>',
+  devices:'<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#4f8cff" stroke-width="2"><rect x="2" y="4" width="14" height="10" rx="1.5"/><rect x="16" y="9" width="6" height="11" rx="1.5"/><path d="M5 18h6"/></svg>',
+  qr:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M21 21v.01M17 21h.01M21 17h.01"/></svg>',
+  cal:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>',
+  monitor:'<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#4f8cff" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>',
+  clk:'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4f8cff" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  power:'<svg width="54" height="54" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.4"><path d="M12 3v9"/><path d="M6.4 6.4a9 9 0 1 0 11.2 0"/></svg>',
+  powerSm:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v9"/><path d="M6.4 6.4a9 9 0 1 0 11.2 0"/></svg>',
+  back:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 6l-6 6 6 6"/></svg>',
+  unlink:'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 4 8M2 2l20 20"/></svg>',
+  check:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 6"/></svg>',
+};
+
+// ---------- enrutado ----------
+function render(){
+  // Vínculo por QR abierto como URL: #id=..&k=..
+  const h = location.hash.slice(1);
+  if (h.includes('id=') && h.includes('k=')) {
+    const pr = Object.fromEntries(new URLSearchParams(h));
+    if (pr.id && pr.k){ LS.set('ch_pair',{id:pr.id,key:pr.k}); history.replaceState(null,'',location.pathname); toast('PC vinculada'); }
+  }
+  const prof = LS.get('ch_profile');
+  if (pair() && (!prof || !prof.pwd || unlocked)) return viewMain();
+  return viewAuth();
+}
+
+// ---------- Pantalla 1: inicio de sesión + vinculación ----------
+function viewAuth(){
+  mainRefs=null; clearInterval(pollTimer); closeWs();
+  const prof = LS.get('ch_profile');
+  const paired = !!pair();
+  app.innerHTML = '';
+  app.appendChild($(`<div class="logo">${I.clock}</div>`));
+  app.appendChild($(`<h1>Control de Horario</h1>`));
+
+  const card = $(`<div class="card"></div>`);
+  if (!prof){
+    card.appendChild($(`<label>Nombre o usuario</label>`));
+    const fn=$(`<div class="field">${I.mail}<input id="name" placeholder="Como quieras llamarte"></div>`);
+    card.appendChild(fn);
+  }
+  card.appendChild($(`<label>Contraseña ${prof?'':'(opcional, se guarda solo en este celular)'}</label>`));
+  const fp=$(`<div class="field">${I.lock}<input id="pwd" type="password" placeholder="${prof&&prof.pwd?'Tu contraseña':'Opcional'}"><button class="ic-btn" id="toggle">${I.eye}</button></div>`);
+  card.appendChild(fp);
+  const b=$(`<button class="btn primary">${prof?'Entrar':'Iniciar sesión'}</button>`);
+  card.appendChild(b);
+  app.appendChild(card);
+  fp.querySelector('#toggle').onclick=()=>{const i=fp.querySelector('#pwd');i.type=i.type==='password'?'text':'password';};
+
+  b.onclick=async()=>{
+    const pwd=fp.querySelector('#pwd').value;
+    if(!prof){
+      const name=(card.querySelector('#name').value||'').trim()||'Usuario';
+      LS.set('ch_profile',{name, pwd: pwd?await sha(pwd):null});
+      unlocked=true;
+    }else{
+      if(prof.pwd){ if(await sha(pwd)!==prof.pwd) return toast('Contraseña incorrecta'); }
+      unlocked=true;
+    }
+    if(pair()) render(); else toast('Ahora vinculá tu PC abajo');
+  };
+
+  app.appendChild($(`<div class="hr"></div>`));
+
+  const pc=$(`<div class="card center"></div>`);
+  pc.appendChild($(`<div class="logo" style="margin:4px 0">${I.devices}</div>`));
+  pc.appendChild($(`<div style="font-size:20px;font-weight:700;margin-bottom:6px">${paired?'PC vinculada':'Vincular PC'}</div>`));
+  pc.appendChild($(`<div class="muted" style="margin-bottom:16px">${paired?'Ya podés entrar. Podés revincular si cambiaste de PC.':'Ingresá el código que aparece en el panel de la PC'}</div>`));
+  const man=$(`<button class="btn outline-blue" style="display:flex;gap:10px;justify-content:center;align-items:center">${I.lock}<span>Ingresar código</span></button>`);
+  pc.appendChild(man);
+  app.appendChild(pc);
+
+  man.onclick=manualCode;
+}
+
+// ---------- Modales propios (sin alert/prompt/confirm) ----------
+function modal(html, setup){
+  const ov=$(`<div class="overlay"><div class="dialog">${html}</div></div>`);
+  document.body.appendChild(ov);
+  const close=()=>ov.remove();
+  setup(ov.querySelector('.dialog'), close);
+  return close;
+}
+function confirmModal(title, text, okLabel, onOk, danger){
+  modal(`<h3>${title}</h3><p>${text}</p>
+    <div class="acts"><button class="btn ghost" id="c">Cancelar</button><button class="btn ${danger?'danger':'primary'}" id="k">${okLabel}</button></div>`,
+    (d,close)=>{ d.querySelector('#c').onclick=close; d.querySelector('#k').onclick=()=>{ close(); onOk(); }; });
+}
+
+// Modal para ingresar el código numérico de 6 dígitos del panel de la PC
+function manualCode(){
+  modal(`<h3>Ingresar código</h3><p>Escribí el código de 6 dígitos que muestra el panel de la PC.</p>
+    <input id="cd" class="codein" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="one-time-code" placeholder="000000">
+    <div class="err" id="er"></div>
+    <div class="acts"><button class="btn ghost" id="c">Cancelar</button><button class="btn primary" id="k">Vincular</button></div>`,
+    (d,close)=>{
+      const inp=d.querySelector('#cd'), er=d.querySelector('#er'), ok=d.querySelector('#k');
+      inp.oninput=()=>{ inp.value=inp.value.replace(/\D/g,'').slice(0,6); er.textContent=''; };
+      d.querySelector('#c').onclick=close;
+      const go=async()=>{
+        if(inp.value.length!==6){ er.textContent='Son 6 números.'; return; }
+        ok.disabled=true; ok.innerHTML='<span class="spin"></span>';
+        try{
+          const r=await fetch(API+'/api/pair',{method:'POST',body:JSON.stringify({code:inp.value})});
+          const dd=await r.json();
+          if(dd.id&&dd.key){ LS.set('ch_pair',{id:dd.id,key:dd.key}); close(); toast('PC vinculada'); render(); return; }
+          er.textContent=dd.error||'Código inválido o vencido';
+        }catch{ er.textContent='No se pudo conectar al servidor'; }
+        ok.disabled=false; ok.textContent='Vincular';
+      };
+      ok.onclick=go; inp.onkeydown=(e)=>{ if(e.key==='Enter') go(); };
+      setTimeout(()=>inp.focus(),50);
+    });
+}
+
+// ---------- Pantalla 2: Mi PC ----------
+let pollTimer=null, lastDias=null, ws=null, mainRefs=null;
+
+function closeWs(){ try{ if(ws){ ws.onclose=null; ws.close(); } }catch{} ws=null; }
+function openWs(){
+  const pr=pair(); if(!pr) return; closeWs();
+  try{
+    const proto = location.protocol==='https:'?'wss':'ws';
+    ws=new WebSocket(`${proto}://${location.host}/phone?id=${encodeURIComponent(pr.id)}&k=${encodeURIComponent(pr.key)}`);
+    ws.onmessage=(e)=>{ try{ applyStatus(JSON.parse(e.data)); }catch{} };
+    ws.onclose=()=>{ ws=null; };
+    ws.onerror=()=>{};
+  }catch{}
+}
+function applyStatus(d){
+  if(d&&d.status&&d.status.dias) lastDias=d.status.dias;
+  if(mainRefs){ paintStatus(mainRefs.card, d||{online:false}, mainRefs.addBtn, mainRefs.offBtn); mainRefs.grBtn.disabled=!(d&&d.online); }
+}
+function revoked(){ closeWs(); clearInterval(pollTimer); LS.del('ch_pair'); toast('La PC te desvinculó. Volvé a vincular.'); render(); }
+async function refreshOnce(){
+  const pr=pair(); if(!pr) return;
+  try{
+    const r=await fetch(`${API}/api/status?id=${encodeURIComponent(pr.id)}`,{headers:{'Authorization':'Bearer '+pr.key}});
+    if(r.status===401) return revoked();
+    applyStatus(await r.json());
+  }catch{ applyStatus({online:false}); }
+}
+
+function viewMain(){
+  clearInterval(pollTimer);
+  app.innerHTML='';
+  const top=$(`<div class="topbar"><button class="iconbtn" id="unlink" title="Desvincular">${I.unlink}</button><h2>Mi PC</h2><button class="iconbtn" id="cal">${I.cal}</button></div>`);
+  app.appendChild(top);
+  top.querySelector('#cal').onclick=()=>viewSchedule();
+  top.querySelector('#unlink').onclick=()=>confirmModal('¿Desvincular la PC?','Vas a tener que vincularla de nuevo con un código.','Desvincular',()=>{ closeWs(); LS.del('ch_pair'); toast('PC desvinculada'); render(); },true);
+
+  const stCard=$(`<div class="card" id="stcard"><div class="muted center">Cargando…</div></div>`);
+  app.appendChild(stCard);
+
+  const extra=$(`<div class="card">
+     <div class="sec-title">${I.clk} Tiempo extra</div>
+     <label>Minutos</label>
+     <div class="num"><input id="min" type="number" inputmode="numeric" placeholder="" min="0">
+       <div class="steps"><button id="up">▲</button><button id="dn">▼</button></div></div>
+     <button class="btn primary" id="addextra">Agregar tiempo extra</button></div>`);
+  app.appendChild(extra);
+  const minI=extra.querySelector('#min');
+  extra.querySelector('#up').onclick=()=>minI.value=(+minI.value||0)+5;
+  extra.querySelector('#dn').onclick=()=>minI.value=Math.max(0,(+minI.value||0)-5);
+
+  const gr=$(`<div class="card">
+     <div class="sec-title">${I.clk} Tiempo de gracia</div>
+     <label>Segundos antes de apagar (5 a 600)</label>
+     <div class="num"><input id="seg" type="number" inputmode="numeric" placeholder="" min="5" max="600"></div>
+     <button class="btn primary" id="setgr">Guardar tiempo de gracia</button></div>`);
+  app.appendChild(gr);
+  gr.querySelector('#setgr').onclick=async(e)=>{
+    const n=+gr.querySelector('#seg').value; if(!n||n<5||n>600) return toast('Poné entre 5 y 600 segundos');
+    await doCmd(e.target,{cmd:'gracia',seg:n},'Tiempo de gracia guardado');
+    gr.querySelector('#seg').value='';
+  };
+
+  const off=$(`<button class="btn danger-out" id="apagar">${I.powerSm}<span>Apagar PC</span></button>`);
+  app.appendChild(off);
+
+  extra.querySelector('#addextra').onclick=async(e)=>{
+    const n=+minI.value; if(!n||n<1) return toast('Poné los minutos');
+    await doCmd(e.target,{cmd:'extra',min:n},'Tiempo extra agregado');
+    minI.value='';
+  };
+  off.onclick=()=>confirmShutdown(off);
+
+  mainRefs={card:stCard, addBtn:extra.querySelector('#addextra'), offBtn:off, grBtn:gr.querySelector('#setgr')};
+  refreshOnce();           // estado inmediato por HTTP
+  openWs();                // y luego actualizaciones en vivo por WebSocket
+  pollTimer=setInterval(refreshOnce, 8000);  // respaldo si el WS se cae
+}
+
+function paintStatus(card, d, addBtn, offBtn){
+  const s=d.status; const online=d.online;
+  let dotColor, connTxt, badge;
+  if(!online){ dotColor='var(--mut)'; connTxt='Desconectada'; badge=['b-gray','Sin señal']; }
+  else if(s&&s.bloqueado){ dotColor='var(--red)'; connTxt='Bloqueando / apagando'; badge=['b-red','Bloqueando']; }
+  else if(s&&!s.permitido){ dotColor='var(--orange)'; connTxt='Conectada'; badge=['b-orange','Fuera de horario']; }
+  else { dotColor='var(--green)'; connTxt='Conectada'; badge=[ 'b-green', (s&&s.restriHoy)?'En horario':'Libre' ]; }
+
+  addBtn.disabled=!online; offBtn.disabled=!online;
+
+  const rows=[];
+  rows.push(['Última señal', s&&s.ahora? fmtFecha(s.ahora): '—']);
+  if(s&&s.restriHoy){ rows.push(['Horario de hoy', (s.iniHoy||'--:--')+' - '+(s.finHoy||'--:--')]); rows.push(['Hora de fin', s.finHoy||'—']); }
+  else if(s){ rows.push(['Horario de hoy','Libre todo el día']); }
+  rows.push(['Tiempo extra de hoy', s? (s.extraHoy>0? s.extraHoy+' min':'0 min'):'—']);
+  rows.push(['Modo mantenimiento', s? (s.mantenimiento?'Activado':'Desactivado'):'—']);
+  rows.push(['Tiempo de gracia', s&&s.gracia? s.gracia+' s':'—']);
+
+  card.innerHTML='';
+  card.appendChild($(`<div class="status-head">${I.monitor}<div class="t">Estado de la PC</div></div>`));
+  card.appendChild($(`<div class="row" style="border:none;padding-top:10px">
+     <div class="conn"><span class="dot" style="background:${dotColor}"></span><span style="color:${dotColor}">${connTxt}</span></div>
+     <span class="badge ${badge[0]}">${badge[1]}</span></div>`));
+  if(!online) card.appendChild($(`<div class="muted" style="font-size:13px;margin:-4px 0 6px">Puede estar apagada o sin internet.</div>`));
+  rows.forEach(r=>card.appendChild($(`<div class="row"><span class="k">${r[0]}</span><span class="v">${r[1]}</span></div>`)));
+}
+
+function fmtFecha(s){ // "2026-10-17 08:45:xx" -> "Hoy, 08:45" si es hoy
+  try{ const [f,t]=s.split(' '); const hhmm=t.slice(0,5); const hoy=new Date().toISOString().slice(0,10);
+    return (f===hoy?'Hoy, ':f.slice(8,10)+'/'+f.slice(5,7)+' ')+hhmm; }catch{ return s; }
+}
+
+async function doCmd(btn, body, okMsg){
+  const old=btn.innerHTML; btn.disabled=true; btn.innerHTML='<span class="spin"></span>';
+  try{
+    const d=await api('/api/cmd',{method:'POST',body:JSON.stringify(body)});
+    if(d.online===false) toast('La PC está desconectada');
+    else if(d.ok) toast(okMsg||d.msg||'Listo');
+    else toast(d.msg||'No se pudo');
+  }catch{ toast('Error de conexión'); }
+  btn.disabled=false; btn.innerHTML=old;
+}
+
+// ---------- Pantalla 4: confirmar apagado ----------
+function confirmShutdown(srcBtn){
+  const ov=$(`<div class="overlay"><div class="dialog">
+     <div>${I.power}</div><h3>¿Apagar la PC?</h3>
+     <p>Se apagará de inmediato, sin aviso para quien la esté usando.</p>
+     <div class="acts"><button class="btn ghost" id="c">Cancelar</button><button class="btn danger" id="k">Apagar</button></div>
+     </div></div>`);
+  document.body.appendChild(ov);
+  ov.querySelector('#c').onclick=()=>ov.remove();
+  ov.querySelector('#k').onclick=async(e)=>{ await doCmd(e.target,{cmd:'apagar'},'Orden de apagado enviada'); ov.remove(); };
+}
+
+// ---------- Pantalla 3: Horario semanal ----------
+function viewSchedule(){
+  clearInterval(pollTimer);
+  if(!lastDias){
+    const def=Array.from({length:7},()=>({Restricted:false,Start:null,End:null}));
+    api('/api/status').then(d=>{ lastDias=(d.status&&d.status.dias)||def; renderSchedule(); })
+                      .catch(()=>{ lastDias=def; renderSchedule(); });
+    return;
+  }
+  renderSchedule();
+}
+
+function renderSchedule(){
+  mainRefs=null;   // en esta pantalla no repintamos el estado en vivo
+  app.innerHTML='';
+  const top=$(`<div class="topbar"><button class="iconbtn" id="back">${I.back}</button><h2>Horario semanal</h2><span style="width:26px"></span></div>`);
+  app.appendChild(top);
+  top.querySelector('#back').onclick=()=>viewMain();
+  app.appendChild($(`<div class="muted" style="margin:2px 2px 14px">Tildado = con restricción horaria. Sin tildar = libre todo el día</div>`));
+
+  const list=$(`<div id="days"></div>`); app.appendChild(list);
+  const dias = lastDias || Array.from({length:7},()=>({Restricted:false,Start:null,End:null}));
+  dias.forEach((d,i)=>{
+    const row=$(`<div class="day">
+      <div class="chk ${d.Restricted?'on':''}">${I.check}</div>
+      <div class="name">${DIAS[i]}</div>
+      <div class="times">
+        <div class="tbox"><label>Inicio</label><input type="time" value="${d.Start||''}" ${d.Restricted?'':'disabled'}></div>
+        <div class="tbox"><label>Fin</label><input type="time" value="${d.End||''}" ${d.Restricted?'':'disabled'}></div>
+      </div></div>`);
+    const chk=row.querySelector('.chk'), ins=row.querySelectorAll('input');
+    chk.onclick=()=>{ const on=!chk.classList.contains('on'); chk.classList.toggle('on',on); ins.forEach(x=>x.disabled=!on); };
+    list.appendChild(row);
+  });
+
+  const save=$(`<div class="sticky"><button class="btn primary" id="save">Guardar</button></div>`);
+  app.appendChild(save);
+  save.querySelector('#save').onclick=async(e)=>{
+    const rows=[...list.querySelectorAll('.day')]; const out=[];
+    for(const r of rows){
+      const on=r.querySelector('.chk').classList.contains('on');
+      const [s,f]=[...r.querySelectorAll('input')].map(x=>x.value);
+      if(on&&(!s||!f||f<=s)){ return toast('Revisá los horarios (fin posterior al inicio)'); }
+      out.push({Restricted:on, Start:on?s:null, End:on?f:null});
+    }
+    await doCmd(e.target,{cmd:'horario',dias:out},'Horario guardado');
+    lastDias=out;
+  };
+}
+
+// ---------- arranque ----------
+render();
+if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+</script>
+</body>
+</html>
