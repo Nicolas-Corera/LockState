@@ -405,15 +405,6 @@ function viewSchedule(){
                     .catch(()=>{ if(!lastDias) lastDias=def; renderSchedule(); });
 }
 
-// Selectores de hora/minuto en formato 24 h (garantizado, sin depender del idioma del celular).
-function hhmm(val){ const p=(val||'').split(':'); return [p[0]||'',p[1]||'']; }
-function selOpts(max,sel){ let o='<option value=""></option>'; for(let n=0;n<max;n++){const v=String(n).padStart(2,'0');o+=`<option value="${v}" ${v===sel?'selected':''}>${v}</option>`;} return o; }
-function timeField(label,val,dis){ const [h,m]=hhmm(val); const st='background:var(--field);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px 6px;font-size:16px';
-  return `<div class="tbox"><label>${label}</label><div style="display:flex;align-items:center;gap:4px">
-    <select class="th" style="${st}" ${dis?'disabled':''}>${selOpts(24,h)}</select><span>:</span>
-    <select class="tm" style="${st}" ${dis?'disabled':''}>${selOpts(60,m)}</select></div></div>`;
-}
-
 function renderSchedule(){
   mainRefs=null;   // en esta pantalla no repintamos el estado en vivo
   app.innerHTML='';
@@ -428,8 +419,11 @@ function renderSchedule(){
     const row=$(`<div class="day">
       <div class="chk ${d.Restricted?'on':''}">${I.check}</div>
       <div class="name">${DIAS[i]}</div>
-      <div class="times">${timeField('Inicio',d.Start,!d.Restricted)}${timeField('Fin',d.End,!d.Restricted)}</div></div>`);
-    const chk=row.querySelector('.chk'), ins=row.querySelectorAll('select');
+      <div class="times">
+        <div class="tbox"><label>Inicio</label><input type="time" value="${d.Start||''}" ${d.Restricted?'':'disabled'}></div>
+        <div class="tbox"><label>Fin</label><input type="time" value="${d.End||''}" ${d.Restricted?'':'disabled'}></div>
+      </div></div>`);
+    const chk=row.querySelector('.chk'), ins=row.querySelectorAll('input');
     chk.onclick=()=>{ const on=!chk.classList.contains('on'); chk.classList.toggle('on',on); ins.forEach(x=>x.disabled=!on); };
     list.appendChild(row);
   });
@@ -440,10 +434,8 @@ function renderSchedule(){
     const rows=[...list.querySelectorAll('.day')]; const out=[];
     for(const r of rows){
       const on=r.querySelector('.chk').classList.contains('on');
-      const boxes=[...r.querySelectorAll('.tbox')];
-      const rd=(b)=>{ const h=b.querySelector('.th').value, m=b.querySelector('.tm').value; return (h&&m)?`${h}:${m}`:''; };
-      const s=rd(boxes[0]), f=rd(boxes[1]);
-      if(on&&(!s||!f||f<=s)){ return toast('Revisá los horarios (elegí inicio y fin, con fin posterior al inicio)'); }
+      const [s,f]=[...r.querySelectorAll('input')].map(x=>x.value);
+      if(on&&(!s||!f||f<=s)){ return toast('Revisá los horarios (fin posterior al inicio)'); }
       out.push({Restricted:on, Start:on?s:null, End:on?f:null});
     }
     await doCmd(e.target,{cmd:'horario',dias:out},'Horario guardado');
