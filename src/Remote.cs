@@ -104,11 +104,12 @@ class Remote : IRemoteChannel
 
     async Task Exec(string? id, string? cmd, string json, CancellationToken ct)
     {
-        bool ok = true; string msg = "OK";
+        bool ok = true; string msg = "OK"; object? ls = null;
         try
         {
             using var doc = JsonDocument.Parse(json);
             var root = doc.RootElement;
+            string? Str(string k) => root.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
             switch (cmd)
             {
                 case "status": break;
@@ -129,11 +130,23 @@ class Remote : IRemoteChannel
                     var dias = JsonSerializer.Deserialize<DayCfg[]>(root.GetProperty("dias").GetRawText())!;
                     engine.RemoteSetDays(dias); msg = "Horario actualizado";
                     break;
+                case "bloq_set":
+                    engine.RemoteBloqSet(Str("itemId"), root.TryGetProperty("activo", out var av) && av.GetBoolean());
+                    msg = "Actualizado"; break;
+                case "bloq_add":
+                    engine.RemoteBloqAdd(Str("ruta"), Str("tipo")); msg = "Agregado"; break;
+                case "bloq_del":
+                    engine.RemoteBloqDel(Str("itemId")); msg = "Quitado"; break;
+                case "internet":
+                    engine.RemoteInternet(root.TryGetProperty("sinInternet", out var si) && si.GetBoolean());
+                    msg = "Internet actualizado"; break;
+                case "ls":
+                    ls = engine.RemoteLs(Str("ruta")); msg = "OK"; break;
                 default: ok = false; msg = "Comando desconocido"; break;
             }
         }
         catch (Exception e) { ok = false; msg = e.Message; }
-        try { await SendObj(new { t = "res", id, ok, msg, data = engine.RemoteStatus() }, ct); } catch { }
+        try { await SendObj(new { t = "res", id, ok, msg, data = engine.RemoteStatus(), ls }, ct); } catch { }
     }
 
     /// <summary>Aplica los comandos que quedaron en la cola mientras la PC estuvo apagada (los que llegaron por "queued").</summary>
@@ -141,15 +154,29 @@ class Remote : IRemoteChannel
     {
         using var doc = JsonDocument.Parse(json);   // el documento vive dentro de este método (antes se liberaba antes de tiempo)
         var items = doc.RootElement.GetProperty("items");
-        var aplicados = new List<string>();
+        var aplicados = new List<string>();   // claves de almacenamiento (q:...) que el servidor debe borrar
         foreach (var it in items.EnumerateArray())
         {
             var cmd = it.GetProperty("cmd").GetString();
             long ts = it.TryGetProperty("ts", out var tsp) && tsp.ValueKind == JsonValueKind.Number ? tsp.GetInt64() : 0;
+            var key = it.TryGetProperty("_k", out var kp) && kp.ValueKind == JsonValueKind.String ? kp.GetString()! : "q:" + cmd;
             try
             {
                 switch (cmd)
                 {
+                    case "bloq_set":
+                        engine.RemoteBloqSet(it.TryGetProperty("id", out var bid) ? bid.GetString() : null,
+                            it.TryGetProperty("activo", out var bac) && bac.GetBoolean());
+                        Log.W("Remoto (cola): ítem activado/desactivado");
+                        break;
+                    case "bloq_del":
+                        engine.RemoteBloqDel(it.TryGetProperty("id", out var did) ? did.GetString() : null);
+                        Log.W("Remoto (cola): ítem quitado");
+                        break;
+                    case "internet":
+                        engine.RemoteInternet(it.TryGetProperty("sinInternet", out var sin) && sin.GetBoolean());
+                        Log.W("Remoto (cola): internet aplicado");
+                        break;
                     case "extra":
                         // El extra vale solo el día en que se pidió: si ya es otro día, se descarta (pero igual se confirma).
                         var pedido = DateTimeOffset.FromUnixTimeMilliseconds(ts).ToLocalTime().Date;
@@ -173,12 +200,12 @@ class Remote : IRemoteChannel
                         Log.W("Remoto (cola): horario aplicado");
                         break;
                 }
-                if (cmd != null) aplicados.Add(cmd);   // confirmado (aplicado o descartado a propósito) -> el servidor lo borra
+                aplicados.Add(key);   // confirmado (aplicado o descartado a propósito) -> el servidor lo borra
             }
             catch (Exception e) { Log.W("Remoto (cola): error en " + cmd + ": " + e.Message); }
         }
         if (aplicados.Count > 0)
-            try { await SendObj(new { t = "qack", cmds = aplicados }, ct); } catch { }
+            try { await SendObj(new { t = "qack", keys = aplicados }, ct); } catch { }
     }
 
     /// <summary>Pide al servidor un código de vinculación de un solo uso (bloqueante, con timeout).</summary>

@@ -27,6 +27,8 @@ class Engine : ICommands
     readonly List<Conn> conns = new();
     readonly object L = new();
     bool lockActive; DateTime deadline;
+    bool restrictApplied;                 // true = restricciones NTFS/firewall aplicadas ahora
+    bool restrictDirty = true;            // la config de restricciones cambió: reconciliar en el próximo tick
     System.Threading.Timer? tick;
     readonly DateTime started = DateTime.UtcNow;
     DateTime lastLaunch = DateTime.MinValue;
@@ -56,6 +58,9 @@ class Engine : ICommands
                 if (cfg.MaintUntil != null && now >= cfg.MaintUntil) { cfg.MaintUntil = null; Store.Save(cfg); Log.W("Modo mantenimiento terminado"); RPush(); }
                 bool maint = cfg.MaintUntil != null;
                 bool hold = conns.Any(c => c.Hold);
+                // Restricciones (archivos/internet): rigen SIEMPRE salvo mantenimiento o panel desbloqueado.
+                ReconcileRestrict(maint || hold);
+                if (restrictApplied) Restrict.Watchdog(cfg);
                 if (Scheduler.IsAllowed(cfg, now) || maint || hold)
                 {
                     if (lockActive) EndLock();
@@ -75,6 +80,16 @@ class Engine : ICommands
             }
             catch (Exception e) { Log.W("Tick: " + e.Message); }
         }
+    }
+
+    /// <summary>Aplica o revierte las restricciones según corresponda. suppress = mantenimiento o panel desbloqueado.</summary>
+    void ReconcileRestrict(bool suppress)
+    {
+        bool enforce = !suppress;
+        if (!restrictDirty && enforce == restrictApplied) return;
+        try { if (enforce) Restrict.Apply(cfg); else Restrict.RemoveAll(); }
+        catch (Exception e) { Log.W("Restrict: " + e.Message); }
+        restrictApplied = enforce; restrictDirty = false;
     }
 
     void StartLock(DateTime now)
@@ -156,6 +171,11 @@ class Engine : ICommands
             cfg.MaintMinutes = Math.Clamp(n.MaintMinutes, 0, 1440);
             if (n.MaintOn && cfg.MaintUntil == null) cfg.MaintUntil = cfg.MaintMinutes == 0 ? DateTime.MaxValue : Clock.Now.AddMinutes(cfg.MaintMinutes);
             else if (!n.MaintOn) cfg.MaintUntil = null;
+            // Restricciones editadas desde el panel de la PC
+            cfg.Bloqueos = (n.Bloqueos ?? new()).Where(b => !Restrict.EsProtegida(b.Ruta)).ToList();
+            foreach (var b in cfg.Bloqueos) if (string.IsNullOrEmpty(b.Id)) b.Id = Tok(6);
+            cfg.SinInternet = n.SinInternet;
+            restrictDirty = true;
             Store.Save(cfg);
             Log.W("Configuración guardada (mantenimiento: " + (cfg.MaintUntil != null) + ")");
             Broadcast(StateMsg()); RPush();
@@ -237,7 +257,9 @@ class Engine : ICommands
                 finHoy = fin,
                 extraHoy,
                 gracia = cfg.GraceSeconds,
-                dias = cfg.Days
+                dias = cfg.Days,
+                bloqueos = cfg.Bloqueos,
+                sinInternet = cfg.SinInternet
             };
         }
     }
@@ -272,6 +294,69 @@ class Engine : ICommands
 
     /// <summary>Cola offline: ts = momento (ms UTC) en que el celular pidió el cambio.</summary>
     public bool RemoteLocalNewerThan(long ts) { lock (L) return cfg.LocalChangedTs > ts; }
+
+    // ---------- Restricciones desde el celular ----------
+    void RestrictChanged() { restrictDirty = true; Store.Save(cfg); Broadcast("!CFG"); RPush(); }
+
+    public void RemoteBloqSet(string? id, bool activo)
+    {
+        lock (L)
+        {
+            var b = cfg.Bloqueos.FirstOrDefault(x => x.Id == id);
+            if (b == null) throw new Exception("Ítem inexistente");
+            b.Activo = activo; Log.W($"Remoto: ítem {(activo ? "activado" : "desactivado")} -> {b.Ruta}");
+            RestrictChanged();
+        }
+    }
+    public void RemoteBloqAdd(string? ruta, string? tipo)
+    {
+        if (string.IsNullOrWhiteSpace(ruta)) throw new Exception("Ruta vacía");
+        if (Restrict.EsProtegida(ruta)) throw new Exception("Esa ruta no se puede bloquear");
+        lock (L)
+        {
+            var full = Path.GetFullPath(ruta).TrimEnd('\\');
+            if (cfg.Bloqueos.Any(x => string.Equals(x.Ruta, full, StringComparison.OrdinalIgnoreCase))) throw new Exception("Ya está en la lista");
+            cfg.Bloqueos.Add(new Bloqueo { Id = Tok(6), Ruta = full, Tipo = tipo == "carpeta" ? "carpeta" : "archivo", Activo = true });
+            Log.W("Remoto: ítem agregado -> " + full);
+            RestrictChanged();
+        }
+    }
+    public void RemoteBloqDel(string? id)
+    {
+        lock (L)
+        {
+            var b = cfg.Bloqueos.FirstOrDefault(x => x.Id == id);
+            if (b != null) { cfg.Bloqueos.Remove(b); Log.W("Remoto: ítem quitado -> " + b.Ruta); RestrictChanged(); }
+        }
+    }
+    public void RemoteInternet(bool sin)
+    {
+        lock (L) { cfg.SinInternet = sin; Log.W("Remoto: internet " + (sin ? "bloqueado" : "libre")); RestrictChanged(); }
+    }
+
+    /// <summary>Explorador remoto: lista subcarpetas y archivos de una ruta (o los discos si viene vacía). Solo lectura de nombres.</summary>
+    public object RemoteLs(string? ruta)
+    {
+        if (string.IsNullOrWhiteSpace(ruta))
+        {
+            var drives = DriveInfo.GetDrives().Where(d => d.IsReady).Select(d => new { nombre = d.Name, ruta = d.Name, tipo = "carpeta" });
+            return new { ruta = "", arriba = (string?)null, items = drives.ToArray() };
+        }
+        var full = Path.GetFullPath(ruta).TrimEnd('\\') + "\\";
+        var dirs = new List<object>(); var files = new List<object>();
+        foreach (var d in Directory.EnumerateDirectories(full))
+        {
+            try { var di = new DirectoryInfo(d); if ((di.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0) dirs.Add(new { nombre = di.Name, ruta = di.FullName, tipo = "carpeta" }); } catch { }
+            if (dirs.Count >= 300) break;
+        }
+        foreach (var f in Directory.EnumerateFiles(full))
+        {
+            try { var fi = new FileInfo(f); if ((fi.Attributes & (FileAttributes.Hidden | FileAttributes.System)) == 0) files.Add(new { nombre = fi.Name, ruta = fi.FullName, tipo = "archivo" }); } catch { }
+            if (files.Count >= 300) break;
+        }
+        var parent = Path.GetDirectoryName(full.TrimEnd('\\'));
+        return new { ruta = full.TrimEnd('\\'), arriba = string.IsNullOrEmpty(parent) ? "" : parent, items = dirs.Concat(files).ToArray() };
+    }
 
     // ---------- Named pipe (solo SYSTEM: el agente corre como SYSTEM) ----------
     void PipeLoop()

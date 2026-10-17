@@ -49,7 +49,7 @@ export class PcRoom {
   async pendientes() {
     const q = await this.state.storage.list({ prefix: "q:" });
     // Devuelve el detalle de cada cambio en cola (para mostrarlo en el celular), no solo el tipo.
-    return [...q.values()].map((v) => ({ cmd: v.cmd, min: v.min, seg: v.seg, dias: v.dias }));
+    return [...q.values()].map((v) => ({ cmd: v.cmd, min: v.min, seg: v.seg, dias: v.dias, id: v.id, ruta: v.ruta, activo: v.activo, sinInternet: v.sinInternet }));
   }
 
   async broadcast() {
@@ -66,7 +66,7 @@ export class PcRoom {
     const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
     for (const [k, v] of q) {
       if (v.ts && v.ts < cutoff) { await this.state.storage.delete(k); continue; }
-      items.push(v);
+      items.push({ ...v, _k: k });   // _k = clave de almacenamiento; la PC la devuelve en qack para borrar exacto
     }
     if (items.length) { try { server.send(JSON.stringify({ t: "queued", items })); } catch {} }
   }
@@ -155,8 +155,9 @@ export class PcRoom {
       return;
     }
     if (m.t === "qack") {
-      // La PC confirmó qué comandos de la cola aplicó: se borran (los no confirmados se reintentan).
-      for (const cmd of m.cmds || []) await this.state.storage.delete("q:" + cmd);
+      // La PC confirmó qué entradas de la cola aplicó (por su clave exacta): se borran. Las no confirmadas se reintentan.
+      for (const k of m.keys || []) await this.state.storage.delete(k);
+      for (const cmd of m.cmds || []) await this.state.storage.delete("q:" + cmd); // compat
       this.broadcast();
       return;
     }
@@ -199,9 +200,16 @@ export class PcRoom {
     // "apagar" NUNCA se encola (evita apagados tardíos inesperados).
     if (!this.isOnline()) {
       const cmd = body.cmd;
-      if (cmd === "extra" || cmd === "gracia" || cmd === "horario") {
-        await this.state.storage.put("q:" + cmd, {
-          cmd, min: body.min, seg: body.seg, dias: body.dias, ts: Date.now(),
+      // Entradas de "último gana" (una por tipo o por ítem). "apagar", "bloq_add" y "ls" NO se encolan.
+      let key = null;
+      if (cmd === "extra" || cmd === "gracia" || cmd === "horario") key = "q:" + cmd;
+      else if (cmd === "internet") key = "q:internet";
+      else if (cmd === "bloq_set") key = "q:bloq_set:" + body.id;
+      else if (cmd === "bloq_del") key = "q:bloq_del:" + body.id;
+      if (key) {
+        await this.state.storage.put(key, {
+          cmd, min: body.min, seg: body.seg, dias: body.dias,
+          id: body.id, ruta: body.ruta, activo: body.activo, sinInternet: body.sinInternet, ts: Date.now(),
         });
         return json({ online: false, queued: true, msg: "Guardado en la nube; se aplicará al encender la PC" });
       }
@@ -212,10 +220,11 @@ export class PcRoom {
       const timer = setTimeout(() => { this.pending.delete(id); resolve({ ok: false, msg: "La PC no respondió" }); }, 8000);
       this.pending.set(id, (m) => { clearTimeout(timer); resolve(m); });
       try {
-        this.pc.send(JSON.stringify({ t: "cmd", id, cmd: body.cmd, min: body.min, seg: body.seg, dias: body.dias }));
+        this.pc.send(JSON.stringify({ t: "cmd", id, cmd: body.cmd, min: body.min, seg: body.seg, dias: body.dias,
+          itemId: body.id, ruta: body.ruta, tipo: body.tipo, activo: body.activo, sinInternet: body.sinInternet }));
       } catch { clearTimeout(timer); this.pending.delete(id); resolve({ ok: false, msg: "PC sin conexión" }); }
     });
-    return json({ online: true, ok: res.ok, msg: res.msg, status: res.data || this.lastStatus });
+    return json({ online: true, ok: res.ok, msg: res.msg, status: res.data || this.lastStatus, ls: res.ls });
   }
 
   // ---------- Directorio de códigos (instancia __dir__) ----------

@@ -84,6 +84,25 @@
   .spin{width:18px;height:18px;border:2px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;
     display:inline-block;animation:sp .7s linear infinite;vertical-align:-3px}
   @keyframes sp{to{transform:rotate(360deg)}}
+  .seg{display:flex;background:var(--card);border-radius:12px;padding:4px;margin:0 0 14px}
+  .seg button{flex:1;background:none;border:none;color:var(--mut);padding:11px;border-radius:9px;font-weight:600;font-size:15px;cursor:pointer}
+  .seg button.on{background:var(--field);color:var(--fg)}
+  .itemrow{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+  .itemrow .ic{flex:none;color:var(--mut);display:flex}
+  .itemrow .info{flex:1;min-width:0}
+  .itemrow .info .nm{font-weight:600;word-break:break-all;font-size:14px}
+  .itemrow .info .pt{color:var(--mut);font-size:12px;word-break:break-all}
+  .sw{width:50px;height:30px;border-radius:16px;background:var(--line);position:relative;flex:none;cursor:pointer;transition:.15s}
+  .sw.on{background:var(--blue)} .sw i{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:.15s}
+  .sw.on i{left:23px}
+  .trash{background:none;border:none;color:var(--red);cursor:pointer;padding:6px;flex:none;display:flex}
+  .crumb{color:var(--mut);font-size:13px;word-break:break-all;margin-bottom:10px}
+  .explist{max-height:52vh;overflow:auto;background:var(--field);border:1px solid var(--line);border-radius:12px;padding:0 10px;margin-bottom:14px}
+  .exprow{display:flex;align-items:center;gap:10px;padding:13px 2px;border-top:1px solid var(--line)}
+  .exprow:first-child{border-top:none}
+  .exprow .nm{flex:1;min-width:0;word-break:break-all;cursor:pointer}
+  .exprow .ic{flex:none;color:var(--mut);display:flex;cursor:pointer}
+  .exprow .add{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:7px 11px;font-size:13px;cursor:pointer;flex:none}
 </style>
 </head>
 <body>
@@ -130,6 +149,12 @@ const I = {
   back:'<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M15 6l-6 6 6 6"/></svg>',
   unlink:'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 17H7A5 5 0 0 1 7 7h2M15 7h2a5 5 0 0 1 4 8M2 2l20 20"/></svg>',
   check:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 12l5 5L20 6"/></svg>',
+  shield:'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#4f8cff" stroke-width="2"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6l8-3Z"/></svg>',
+  globe:'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>',
+  folder:'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>',
+  file:'<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#9aa0ab" stroke-width="2"><path d="M14 3v5h5M7 3h8l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/></svg>',
+  plus:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>',
+  trash:'<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg>',
 };
 
 // ---------- enrutado ----------
@@ -270,6 +295,8 @@ function viewMain(){
   top.querySelector('#cal').onclick=()=>viewSchedule();
   top.querySelector('#unlink').onclick=()=>confirmModal('¿Desvincular la PC?','Vas a tener que vincularla de nuevo con un código.','Desvincular',()=>{ closeWs(); LS.del('ch_pair'); toast('PC desvinculada'); render(); },true);
 
+  app.appendChild(segmented('control'));
+
   const stCard=$(`<div class="card" id="stcard"><div class="muted center">Cargando…</div></div>`);
   app.appendChild(stCard);
 
@@ -382,6 +409,121 @@ async function doCmd(btn, body, okMsg){
     else toast(d.msg||'No se pudo');
   }catch{ toast('Error de conexión'); }
   btn.disabled=false; btn.innerHTML=old;
+}
+
+// ---------- Pestañas Control / Restricciones ----------
+function segmented(active){
+  const s=$(`<div class="seg"><button class="${active==='control'?'on':''}" id="t1">Control</button><button class="${active==='restric'?'on':''}" id="t2">Restricciones</button></div>`);
+  s.querySelector('#t1').onclick=()=>{ if(active!=='control') viewMain(); };
+  s.querySelector('#t2').onclick=()=>{ if(active!=='restric') viewRestric(); };
+  return s;
+}
+const nameOf=(r)=>{ try{ return r.split(/[\\/]/).filter(Boolean).pop()||r; }catch{ return r; } };
+
+// ---------- Pantalla Restricciones ----------
+let lastBloq=null, lastInet=false;
+function viewRestric(){
+  clearInterval(pollTimer); closeWs(); mainRefs=null;
+  app.innerHTML='';
+  const top=$(`<div class="topbar"><button class="iconbtn" id="unlink" title="Desvincular">${I.unlink}</button><h2>Restricciones</h2><span style="width:26px"></span></div>`);
+  app.appendChild(top);
+  top.querySelector('#unlink').onclick=()=>confirmModal('¿Desvincular la PC?','Vas a tener que vincularla de nuevo con un código.','Desvincular',()=>{ LS.del('ch_pair'); toast('PC desvinculada'); render(); },true);
+  app.appendChild(segmented('restric'));
+  const body=$(`<div id="rbody"><div class="muted center">Cargando…</div></div>`);
+  app.appendChild(body);
+  loadRestric();
+}
+async function loadRestric(){
+  let online=false;
+  try{ const d=await api('/api/status'); online=d.online; if(d.status){ lastBloq=d.status.bloqueos||[]; lastInet=!!d.status.sinInternet; } }
+  catch{}
+  if(lastBloq===null) lastBloq=[];
+  const body=document.getElementById('rbody'); if(body) renderRestric(body, online);
+}
+function renderRestric(body, online){
+  body.innerHTML='';
+  const inetCard=$(`<div class="card" style="padding:14px"><div class="itemrow" style="margin:0;background:none;padding:0">
+     <div class="ic">${I.globe}</div><div class="info"><div class="nm">Bloquear internet</div>
+     <div class="pt">Corta la red del equipo mientras está en uso</div></div>
+     <div class="sw ${lastInet?'on':''}" id="inet"><i></i></div></div></div>`);
+  body.appendChild(inetCard);
+  inetCard.querySelector('#inet').onclick=()=>cmdRestric({cmd:'internet',sinInternet:!lastInet}, (!lastInet)?'Internet bloqueado':'Internet habilitado');
+
+  body.appendChild($(`<div class="sec-title">${I.shield} Archivos y carpetas</div>`));
+  if(!lastBloq.length) body.appendChild($(`<div class="muted" style="margin:-4px 0 14px">No hay nada bloqueado todavía.</div>`));
+  lastBloq.forEach(b=>{
+    const row=$(`<div class="itemrow"><div class="ic">${b.Tipo==='carpeta'?I.folder:I.file}</div>
+      <div class="info"><div class="nm">${nameOf(b.Ruta)}</div><div class="pt">${b.Ruta}</div></div>
+      <div class="sw ${b.Activo?'on':''}"><i></i></div>
+      <button class="trash">${I.trash}</button></div>`);
+    row.querySelector('.sw').onclick=()=>cmdRestric({cmd:'bloq_set',id:b.Id,activo:!b.Activo},'Actualizado');
+    row.querySelector('.trash').onclick=()=>confirmModal('¿Quitar de la lista?',b.Ruta,'Quitar',()=>cmdRestric({cmd:'bloq_del',id:b.Id},'Quitado'),true);
+    body.appendChild(row);
+  });
+  const add=$(`<button class="btn outline-blue" style="display:flex;gap:10px;justify-content:center;align-items:center">${I.plus}<span>Agregar archivo o carpeta</span></button>`);
+  body.appendChild(add);
+  add.onclick=()=>{ if(!online) return toast('La PC debe estar encendida para explorar sus archivos'); openExplorer(); };
+}
+
+// Optimista cuando el comando se encola (PC offline): refleja el cambio sin esperar a la PC.
+function applyOptimistic(p){
+  if(p.cmd==='internet') lastInet=!!p.sinInternet;
+  else if(p.cmd==='bloq_set' && lastBloq){ const b=lastBloq.find(x=>x.Id===p.id); if(b) b.Activo=!!p.activo; }
+  else if(p.cmd==='bloq_del' && lastBloq){ lastBloq=lastBloq.filter(x=>x.Id!==p.id); }
+}
+async function cmdRestric(payload, okMsg){
+  let online=true;
+  try{
+    const d=await api('/api/cmd',{method:'POST',body:JSON.stringify(payload)});
+    if(d.queued){ toast(d.msg||'Guardado; se aplicará al encender la PC'); applyOptimistic(payload); online=false; }
+    else if(d.online===false){ toast('La PC está desconectada'); online=false; }
+    else if(!d.ok) toast(d.msg||'No se pudo');
+    else { toast(okMsg||'Listo'); if(d.status){ lastBloq=d.status.bloqueos||lastBloq; if(d.status.sinInternet!==undefined) lastInet=!!d.status.sinInternet; } }
+  }catch{ toast('Error de conexión'); return; }
+  const body=document.getElementById('rbody'); if(body) renderRestric(body, online);
+}
+
+// Explorador remoto del disco de la PC (solo online).
+function openExplorer(){
+  const ov=$(`<div class="overlay"><div class="dialog" style="max-width:420px;text-align:left">
+     <h3 style="text-align:center;margin-top:0">Explorar la PC</h3>
+     <div class="crumb" id="crumb">Equipo</div>
+     <div class="explist" id="elist"><div class="muted center" style="padding:16px">Cargando…</div></div>
+     <button class="btn primary" id="blk" style="margin-bottom:10px;display:none">Bloquear esta carpeta</button>
+     <div class="acts"><button class="btn ghost" id="c">Cerrar</button></div></div></div>`);
+  document.body.appendChild(ov);
+  ov.querySelector('#c').onclick=()=>ov.remove();
+  const listEl=ov.querySelector('#elist'), crumb=ov.querySelector('#crumb'), blk=ov.querySelector('#blk');
+  async function go(ruta){
+    listEl.innerHTML='<div class="muted center" style="padding:16px">Cargando…</div>';
+    let d; try{ d=await api('/api/cmd',{method:'POST',body:JSON.stringify({cmd:'ls',ruta})}); }catch{ d=null; }
+    if(!d||!d.ls){ listEl.innerHTML='<div class="muted center" style="padding:16px">No se pudo leer esta carpeta.</div>'; return; }
+    const ls=d.ls; const cur=ls.ruta||'';
+    crumb.textContent=cur||'Equipo';
+    blk.style.display=cur?'block':'none';
+    blk.onclick=()=>addFromExplorer(cur,'carpeta',ov);
+    listEl.innerHTML='';
+    if(ls.arriba!==null && ls.arriba!==undefined){
+      const up=$(`<div class="exprow"><div class="ic">${I.back}</div><div class="nm">..</div></div>`);
+      up.querySelector('.nm').onclick=()=>go(ls.arriba); up.querySelector('.ic').onclick=()=>go(ls.arriba);
+      listEl.appendChild(up);
+    }
+    (ls.items||[]).forEach(it=>{
+      const r=$(`<div class="exprow"><div class="ic">${it.tipo==='carpeta'?I.folder:I.file}</div>
+        <div class="nm">${it.nombre}</div><button class="add">Bloquear</button></div>`);
+      if(it.tipo==='carpeta'){ r.querySelector('.nm').onclick=()=>go(it.ruta); r.querySelector('.ic').onclick=()=>go(it.ruta); }
+      r.querySelector('.add').onclick=()=>addFromExplorer(it.ruta,it.tipo,ov);
+      listEl.appendChild(r);
+    });
+    if(!(ls.items||[]).length) listEl.appendChild($(`<div class="muted center" style="padding:16px">Carpeta vacía.</div>`));
+  }
+  go('');
+}
+async function addFromExplorer(ruta,tipo,ov){
+  let d; try{ d=await api('/api/cmd',{method:'POST',body:JSON.stringify({cmd:'bloq_add',ruta,tipo})}); }catch{ return toast('Error de conexión'); }
+  if(d.online===false) return toast('La PC está desconectada');
+  if(d.ok){ toast('Agregado'); if(d.status) lastBloq=d.status.bloqueos||lastBloq; ov.remove(); const body=document.getElementById('rbody'); if(body) renderRestric(body,true); }
+  else toast(d.msg||'No se pudo');
 }
 
 // ---------- Pantalla 4: confirmar apagado ----------

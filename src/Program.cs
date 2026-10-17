@@ -19,6 +19,7 @@ static class Program
                 return 0;
             case "--init-password" when a.Length > 1:
                 var c = Store.Load(); c.PwdHash = Store.Hash(a[1]); Store.Save(c); return 0;
+            case "--unrestrict": Restrict.RemoveAll(); return 0;   // lo usa el desinstalador para revertir ACL + firewall
         }
         return 0;
     }

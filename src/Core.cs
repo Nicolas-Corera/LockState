@@ -17,6 +17,7 @@ static class Paths
     public static string Config => Path.Combine(Dir, "config.dat");
     public static string Log => Path.Combine(Dir, "log.txt");
     public static string NetFlag => Path.Combine(Dir, "net.txt");
+    public static string RestrictState => Path.Combine(Dir, "bloqueos.dat"); // rutas con ACL Deny aplicada (para revertir exacto)
 }
 
 /// <summary>Log en ProgramData (el instalador deja el directorio accesible solo a SYSTEM/Administradores).</summary>
@@ -43,6 +44,15 @@ static class Log
 
 class DayCfg { public bool Restricted { get; set; } public string? Start { get; set; } public string? End { get; set; } }
 
+/// <summary>Un ítem bloqueado: archivo/ejecutable o carpeta. Activo = el bloqueo rige ahora.</summary>
+class Bloqueo
+{
+    public string Id { get; set; } = "";
+    public string Ruta { get; set; } = "";
+    public string Tipo { get; set; } = "archivo";   // "archivo" | "carpeta"
+    public bool Activo { get; set; } = true;
+}
+
 class Cfg
 {
     public DayCfg[] Days { get; set; } = Enumerable.Range(0, 7).Select(_ => new DayCfg()).ToArray(); // 0 = lunes
@@ -63,6 +73,9 @@ class Cfg
     public string? PhoneKey { get; set; }             // auth del celular; cambiarlo revoca el celu
     public int RemoteExtraCapMinutes { get; set; } = 240; // tope de extra por comando remoto
     public long LocalChangedTs { get; set; }          // ms UTC del último cambio de horario hecho en la PC (para no pisarlo con cola vieja)
+    // ---- Restricciones (archivos/carpetas + internet). Rigen SIEMPRE salvo mantenimiento o panel desbloqueado. ----
+    public List<Bloqueo> Bloqueos { get; set; } = new();
+    public bool SinInternet { get; set; }
 }
 
 /// <summary>Config cifrada con DPAPI (máquina). Contraseña solo como hash PBKDF2-SHA256.</summary>

@@ -79,3 +79,60 @@
 
 ### Pendiente / conocido
 - Hallazgos de seguridad del servidor ya existentes (no tocados por pedido): código de vinculación de 6 dígitos sin límite de intentos y `/api/regstore` expuesto vía `id=__dir__`; valores `Start/End` interpolados en HTML.
+
+---
+
+## Fase 2 · Etapa 2 — Pestaña "Restricciones" (bloqueo de archivos/carpetas + internet)
+**Fecha:** 2026-10-17 · **Rama:** `main`
+
+### Contexto / pedido
+Pestaña nueva ("Restricciones") en el panel de la PC y en la PWA, para: (1) bloquear
+archivos/ejecutables/carpetas (no se pueden abrir con doble clic ni de ninguna forma) y
+(2) cortar/permitir internet. Rige **siempre** mientras la PC está en uso, salvo modo
+mantenimiento o panel desbloqueado con contraseña. Desde el celular se agregan ítems
+**navegando el disco de la PC** (explorador remoto), se activan/desactivan y se quitan.
+
+### Qué se hizo
+- **Modelo** (`src/Core.cs`): `Cfg.Bloqueos` (`Bloqueo {Id, Ruta, Tipo archivo|carpeta, Activo}`)
+  y `Cfg.SinInternet`. Se cifra igual que el resto.
+- **Aplicación** (`src/Restrict.cs`, nuevo; integrado en `src/Service.cs`):
+  - Capa 1 — **ACL NTFS Deny** al grupo Usuarios (`icacls … /deny *S-1-5-32-545:(RX)` para
+    archivos, `(OI)(CI)(RX)` para carpetas). Las rutas aplicadas se guardan en
+    `bloqueos.dat` para revertir exacto. El doble clic falla a nivel kernel.
+  - Capa 2 — **vigilante de procesos** en el tick (1 Hz): termina cualquier proceso cuya
+    ruta caiga en un ítem activo (cubre USB/FAT sin ACL o exe copiado dentro de carpeta bloqueada).
+  - **Internet**: regla de firewall saliente `BloqueadorHorario-SinInternet` con
+    `-LocalUser 'D:(A;;CC;;;S-1-5-32-545)'` → corta la red solo al usuario estándar; el
+    servicio (SYSTEM) conserva su WebSocket (el celular sigue controlando). No se usa `Disable-NetAdapter`.
+  - **Reconciliación** idempotente (`Engine.ReconcileRestrict`): se aplica cuando la PC está
+    en uso y se **levanta** en mantenimiento / panel desbloqueado; al volver se re-aplica.
+  - **Salvaguardas** (`Restrict.EsProtegida`): nunca `C:\Windows`, la carpeta del programa,
+    `ProgramData\BloqueadorHorario` ni la raíz de un disco (validado en el servicio, no solo en UI).
+- **Panel PC** (`src/Ui.cs`): el panel pasó a **2 pestañas** (`TabControl` oscuro):
+  *Horario* (lo de antes) y *Restricciones* (lista con checkbox Activo, Agregar archivo/exe…,
+  Agregar carpeta…, Quitar, e interruptor "Bloquear internet"). Se guarda con el mismo botón
+  Guardar; reutiliza el aviso/Recargar de `!CFG`.
+- **Servidor + remoto** (`server/src/worker.js`, `src/Remote.cs`): comandos nuevos
+  `bloq_set`, `bloq_add`, `bloq_del`, `internet` (último-gana; `bloq_set/bloq_del/internet`
+  se **encolan** offline con clave por ítem `q:bloq_set:<id>` etc.; `bloq_add` solo online) y
+  `ls` (explorador remoto, solo online, request/response por el WS, máx. 300 entradas, sin
+  leer contenido; raíz = discos). `status`/`pendientes()` devuelven `bloqueos[]` y `sinInternet`.
+  `qack` ahora borra por **clave exacta** (`keys`, vía `_k`).
+- **PWA** (`server/public/index.html`, `sw.js`): control segmentado **Control / Restricciones**;
+  vista con interruptor de internet, lista de ítems (switch activo + quitar) y **explorador**
+  (breadcrumb, navegación de carpetas, botón Bloquear por ítem y "Bloquear esta carpeta").
+  Offline: agregar deshabilitado; activar/quitar/internet se encolan (optimista) y aparecen en
+  "Pendientes". Cache SW → `ch-v4`.
+- **Desinstalador** (`uninstall.ps1`): rol nuevo `--unrestrict` revierte ACL + firewall antes de borrar.
+
+### Archivos tocados
+`src/Core.cs`, `src/Restrict.cs` (nuevo), `src/Service.cs`, `src/Remote.cs`, `src/Program.cs`,
+`src/Ui.cs`, `server/src/worker.js`, `server/public/index.html`, `server/public/sw.js`, `uninstall.ps1`.
+
+### Cómo desplegar / probar (VM, usuario `testeos`)
+- Servidor: `cd <ruta>\LockState\server` → `npx wrangler deploy`.
+- App: `cd C:\Users\testeos\Documents\LockState\src` → `dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o ..\publish` → doble clic a `publish\BloqueadorHorario.exe` (es el instalador; **no** `install.ps1`).
+- Probar: bloquear un `.exe` y una carpeta → doble clic = "Acceso denegado"; con mantenimiento/contraseña se levanta y al salir se re-aplica; exe copiado a ruta bloqueada → el vigilante lo mata. Internet bloqueada: navegador sin red para el usuario, pero el celular sigue controlando. Celular: agregar por explorador, activar/desactivar, quitar; con la PC apagada el toggle queda "Pendiente" y se aplica al encender. Desinstalar: sin ACL Deny ni regla de firewall residuales.
+
+### Regla de uso de esta tarea
+- Tope **10 %** del límite de 5 h (lo pidió el usuario por ser una función grande).

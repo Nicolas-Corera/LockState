@@ -42,6 +42,23 @@ static class Ui
         for (int m = 0; m < 1440; m += 15) c.Items.Add($"{m / 60:00}:{m % 60:00}");
         c.SelectedIndex = 0; p.Controls.Add(c); return c;
     }
+    /// <summary>TabControl con pestañas dibujadas en tema oscuro.</summary>
+    public static TabControl Tabs(Control p, int x, int y, int w, int h)
+    {
+        var t = new TabControl { Left = x, Top = y, Width = w, Height = h, DrawMode = TabDrawMode.OwnerDrawFixed, SizeMode = TabSizeMode.Fixed, ItemSize = new Size(180, 32) };
+        t.DrawItem += (s, e) =>
+        {
+            var tc = (TabControl)s!; bool sel = e.Index == tc.SelectedIndex;
+            using var bg = new SolidBrush(sel ? Card : Bg);
+            e.Graphics.FillRectangle(bg, e.Bounds);
+            TextRenderer.DrawText(e.Graphics, tc.TabPages[e.Index].Text, new Font("Segoe UI", 10.5f, FontStyle.Bold), e.Bounds, sel ? Fg : Mut, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+        };
+        p.Controls.Add(t); return t;
+    }
+    public static TabPage Page(TabControl t, string title)
+    {
+        var pg = new TabPage(title) { BackColor = Bg, ForeColor = Fg }; t.TabPages.Add(pg); return pg;
+    }
 }
 
 /// <summary>Modal de desbloqueo: fondo oscuro semitransparente a pantalla completa + tarjeta centrada. Siempre encima.</summary>
@@ -192,6 +209,9 @@ class PanelForm : Form
     readonly NumericUpDown extra, grace, maintMin;
     readonly TextBox sc;
     readonly CheckBox maint;
+    readonly CheckedListBox clb;        // ítems bloqueados (checkbox = activo)
+    readonly CheckBox inet;             // bloquear internet
+    List<Bloqueo> bloq = new();         // respaldo de clb, en orden
     Cfg d;
     bool dirty;                 // el usuario tocó algo sin guardar: no pisar con un cambio remoto
     bool loading;               // true mientras se poblan los controles: ignora los eventos de cambio
@@ -201,14 +221,18 @@ class PanelForm : Form
 
     public PanelForm()
     {
-        Text = "Control de Horario"; ClientSize = new Size(900, 590); BackColor = Ui.Bg; ForeColor = Ui.Fg; Font = new Font("Segoe UI", 10);
+        Text = "Control de Horario"; ClientSize = new Size(900, 640); BackColor = Ui.Bg; ForeColor = Ui.Fg; Font = new Font("Segoe UI", 10);
         StartPosition = FormStartPosition.CenterScreen; FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; TopMost = true;
         var js = Link.Req("GETCFG");
         d = js != null && js.StartsWith("{") ? JsonSerializer.Deserialize<Cfg>(js)! : new Cfg();
         loading = true;
 
+        var tabs = Ui.Tabs(this, 10, 8, 882, 560);
+        var pHor = Ui.Page(tabs, "Horario");
+        var pRes = Ui.Page(tabs, "Restricciones");
+
         // --- Horario semanal ---
-        var a = Ui.P(this, 20, 15, 860, 340);
+        var a = Ui.P(pHor, 12, 12, 856, 336);
         Ui.L(a, "Horario semanal", 20, 8, 0, 16, true);
         Ui.L(a, "Tildado = con restricción horaria. Sin tildar = libre todo el día.", 20, 40, 0, 10, false, Ui.Mut);
         Ui.L(a, "Día", 60, 68, 0, 10, true); Ui.L(a, "Inicio", 430, 68, 0, 10, true); Ui.L(a, "Fin", 620, 68, 0, 10, true);
@@ -228,14 +252,14 @@ class PanelForm : Form
         }
 
         // --- Tiempo extra ---
-        var b = Ui.P(this, 20, 365, 300, 150);
+        var b = Ui.P(pHor, 12, 360, 300, 150);
         Ui.L(b, "Tiempo extra", 20, 10, 0, 14, true);
         Ui.L(b, "Minutos", 20, 62); extra = Ui.N(b, 95, 58, 80, 1440); extra.Value = Math.Clamp(d.ExtraMinutes, 0, 1440);
         var ap = Ui.B(b, "Aplicar solo hoy", 20, 100, 160, 34);
         ap.Click += (_, _) => Dlg.Show(Link.Req("EXTRA " + (int)extra.Value) == "OK" ? "Tiempo extra aplicado para hoy." : "No se pudo aplicar.");
 
         // --- Opciones ---
-        var c = Ui.P(this, 340, 365, 540, 150);
+        var c = Ui.P(pHor, 320, 360, 548, 150);
         Ui.L(c, "Opciones", 20, 10, 0, 14, true);
         Ui.L(c, "Atajo de desbloqueo", 20, 48); sc = Ui.T(c, 190, 45, 150); sc.ReadOnly = true; sc.Text = d.Shortcut;
         var ch = Ui.B(c, "Cambiar", 360, 43, 160, 30);
@@ -259,16 +283,35 @@ class PanelForm : Form
         Ui.L(c, "Duración (min)", 315, 121); maintMin = Ui.N(c, 430, 118, 70, 1440); maintMin.Value = Math.Clamp(d.MaintMinutes, 0, 1440);
         maint.CheckedChanged += (_, _) => MarkDirty(); maintMin.ValueChanged += (_, _) => MarkDirty();
 
+        // --- Pestaña Restricciones ---
+        Ui.L(pRes, "Archivos y carpetas bloqueados", 12, 12, 0, 15, true);
+        Ui.L(pRes, "Mientras la PC está en uso no se pueden abrir (salvo en modo mantenimiento o con contraseña).", 12, 40, 0, 10, false, Ui.Mut);
+        clb = new CheckedListBox { Left = 12, Top = 70, Width = 844, Height = 352, BackColor = Ui.Fld, ForeColor = Ui.Fg, BorderStyle = BorderStyle.FixedSingle, CheckOnClick = true, IntegralHeight = false };
+        pRes.Controls.Add(clb);
+        clb.ItemCheck += (_, _) => MarkDirty();
+        var addF = Ui.B(pRes, "Agregar archivo/exe…", 12, 432, 210, 40);
+        var addD = Ui.B(pRes, "Agregar carpeta…", 234, 432, 210, 40);
+        var del = Ui.B(pRes, "Quitar", 456, 432, 140, 40);
+        addF.Click += (_, _) => { using var o = new OpenFileDialog { Title = "Elegí el archivo o ejecutable a bloquear" }; if (o.ShowDialog(this) == DialogResult.OK) AddItem(o.FileName, "archivo"); };
+        addD.Click += (_, _) => { using var o = new FolderBrowserDialog { Description = "Elegí la carpeta a bloquear" }; if (o.ShowDialog(this) == DialogResult.OK) AddItem(o.SelectedPath, "carpeta"); };
+        del.Click += (_, _) => { int i = clb.SelectedIndex; if (i >= 0) { clb.Items.RemoveAt(i); bloq.RemoveAt(i); MarkDirty(); } };
+        Ui.L(pRes, "Bloquear internet", 12, 492, 0, 11, true);
+        inet = new CheckBox { Left = 190, Top = 486, Width = 120, Height = 30, Appearance = Appearance.Button, FlatStyle = FlatStyle.Flat, BackColor = Ui.Fld, ForeColor = Ui.Fg, TextAlign = ContentAlignment.MiddleCenter, Cursor = Cursors.Hand };
+        inet.FlatAppearance.BorderColor = Ui.Line; inet.FlatAppearance.CheckedBackColor = Ui.Blue;
+        inet.CheckedChanged += (_, _) => { inet.Text = inet.Checked ? "Activado" : "Desactivado"; MarkDirty(); };
+        pRes.Controls.Add(inet);
+        LoadBloqueos();
+
         // Aviso de cambios remotos (oculto hasta que llega un !CFG mientras hay ediciones sin guardar).
-        aviso = Ui.L(this, "", 210, 542, 420, 10, false, Ui.Mut); aviso.AutoSize = true;
-        recargar = Ui.B(this, "Recargar", 520, 530, 110, 40);
+        aviso = Ui.L(this, "", 210, 600, 420, 10, false, Ui.Mut); aviso.AutoSize = true;
+        recargar = Ui.B(this, "Recargar", 520, 588, 110, 40);
         recargar.Visible = false;
         recargar.Click += (_, _) => { dirty = false; aviso!.Text = ""; recargar!.Visible = false; Reload(); };
 
-        var remoto = Ui.B(this, "Control remoto…", 20, 530, 180, 40);
+        var remoto = Ui.B(this, "Control remoto…", 20, 588, 180, 40);
         remoto.Click += (_, _) => { using var rf = new RemoteForm(); rf.ShowDialog(this); };
-        var save = Ui.B(this, "Guardar", 640, 530, 110, 40, true);
-        var close = Ui.B(this, "Cerrar", 770, 530, 110, 40);
+        var save = Ui.B(this, "Guardar", 648, 588, 110, 40, true);
+        var close = Ui.B(this, "Cerrar", 770, 588, 110, 40);
         close.Click += (_, _) => Close();
         save.Click += (_, _) => Save();
 
@@ -280,6 +323,22 @@ class PanelForm : Form
     }
 
     void MarkDirty() { if (!loading) dirty = true; }
+
+    static string ItemLabel(Bloqueo b) => (b.Tipo == "carpeta" ? "📁  " : "📄  ") + b.Ruta;
+    void AddItem(string ruta, string tipo)
+    {
+        if (Restrict.EsProtegida(ruta)) { Dlg.Show("Esa ruta no se puede bloquear (es del sistema o del propio programa)."); return; }
+        string full; try { full = Path.GetFullPath(ruta).TrimEnd('\\'); } catch { return; }
+        if (bloq.Any(x => string.Equals(x.Ruta, full, StringComparison.OrdinalIgnoreCase))) { Dlg.Show("Esa ruta ya está en la lista."); return; }
+        var b = new Bloqueo { Id = "", Ruta = full, Tipo = tipo, Activo = true };
+        bloq.Add(b); clb.Items.Add(ItemLabel(b), true); MarkDirty();
+    }
+    void LoadBloqueos()
+    {
+        clb.Items.Clear(); bloq = (d.Bloqueos ?? new()).Select(x => new Bloqueo { Id = x.Id, Ruta = x.Ruta, Tipo = x.Tipo, Activo = x.Activo }).ToList();
+        foreach (var b in bloq) clb.Items.Add(ItemLabel(b), b.Activo);
+        inet.Checked = d.SinInternet; inet.Text = inet.Checked ? "Activado" : "Desactivado";
+    }
 
     // Llega un cambio remoto: si no hay ediciones sin guardar, recarga directo; si las hay, avisa y ofrece Recargar.
     void OnRemoteCfg()
@@ -310,6 +369,7 @@ class PanelForm : Form
             grace.Value = Math.Clamp(d.GraceSeconds, 0, 600);
             maint.Checked = d.MaintOn; maint.Text = maint.Checked ? "Activado" : "Desactivado";
             maintMin.Value = Math.Clamp(d.MaintMinutes, 0, 1440);
+            LoadBloqueos();
         }
         finally { loading = false; dirty = false; }
     }
@@ -333,6 +393,8 @@ class PanelForm : Form
             if (!Scheduler.TryT(day.Start, out var s) || !Scheduler.TryT(day.End, out var e) || e <= s)
             { Dlg.Show($"Revisá el horario del {Dias[i]}: elegí inicio y fin (el fin debe ser posterior al inicio)."); return; }
         }
+        for (int i = 0; i < bloq.Count; i++) bloq[i].Activo = clb.GetItemChecked(i);
+        n.Bloqueos = bloq; n.SinInternet = inet.Checked;
         var r = Link.Req("SETCFG " + JsonSerializer.Serialize(n));
         Dlg.Show(r == "OK" ? "Configuración guardada." : "No se pudo guardar: " + (r ?? "sin respuesta del servicio"));
     }
