@@ -420,8 +420,8 @@ function renderSchedule(){
       <div class="chk ${d.Restricted?'on':''}">${I.check}</div>
       <div class="name">${DIAS[i]}</div>
       <div class="times">
-        <div class="tbox"><label>Inicio</label><input type="time" lang="en-GB" value="${d.Start||''}" ${d.Restricted?'':'disabled'}></div>
-        <div class="tbox"><label>Fin</label><input type="time" lang="en-GB" value="${d.End||''}" ${d.Restricted?'':'disabled'}></div>
+        <div class="tbox"><label>Inicio</label><input type="time" lang="es-AR" value="${d.Start||''}" ${d.Restricted?'':'disabled'}></div>
+        <div class="tbox"><label>Fin</label><input type="time" lang="es-AR" value="${d.End||''}" ${d.Restricted?'':'disabled'}></div>
       </div></div>`);
     const chk=row.querySelector('.chk'), ins=row.querySelectorAll('input');
     chk.onclick=()=>{ const on=!chk.classList.contains('on'); chk.classList.toggle('on',on); ins.forEach(x=>x.disabled=!on); };
