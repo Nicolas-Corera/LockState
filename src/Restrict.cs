@@ -32,7 +32,9 @@ static class Restrict
     static void Ps(string cmd) => Run("powershell.exe", "-NoProfile -NonInteractive -WindowStyle Hidden -Command \"" + cmd + "\"");
     static void Run(string exe, string args)
     {
-        try { using var p = Process.Start(new ProcessStartInfo(exe, args) { CreateNoWindow = true, UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true }); p?.WaitForExit(15000); }
+        // Sin redirigir la salida: si se redirige y no se lee, el proceso se cuelga al llenarse el buffer (~4 KB)
+        // y el comando queda a medio aplicar. CreateNoWindow basta para que no se vea ninguna ventana.
+        try { using var p = Process.Start(new ProcessStartInfo(exe, args) { CreateNoWindow = true, UseShellExecute = false }); p?.WaitForExit(15000); }
         catch (Exception e) { Log.W("Restrict exec: " + e.Message); }
     }
 
@@ -43,7 +45,7 @@ static class Restrict
         {
             if (File.Exists(Paths.RestrictState))
                 foreach (var ruta in File.ReadAllLines(Paths.RestrictState))
-                    if (!string.IsNullOrWhiteSpace(ruta)) Icacls($"\"{ruta}\" /remove:d {UsersSid}");
+                    if (!string.IsNullOrWhiteSpace(ruta)) Icacls($"\"{ruta}\" /remove:d {UsersSid} /Q /C");
         }
         catch (Exception e) { Log.W("Restrict RemoveAll ACL: " + e.Message); }
         try { File.Delete(Paths.RestrictState); } catch { }
@@ -63,7 +65,7 @@ static class Restrict
             bool carpeta = b.Tipo == "carpeta";
             if (carpeta ? !Directory.Exists(full) : !File.Exists(full)) continue;   // ya no existe
             var perm = carpeta ? "(OI)(CI)(RX)" : "(RX)";
-            Icacls($"\"{full}\" /deny \"{UsersSid}:{perm}\"");
+            Icacls($"\"{full}\" /deny \"{UsersSid}:{perm}\" /Q /C");
             aplicadas.Add(full);
         }
         try { if (aplicadas.Count > 0) File.WriteAllLines(Paths.RestrictState, aplicadas); else File.Delete(Paths.RestrictState); } catch { }
