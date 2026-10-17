@@ -27,9 +27,10 @@ class Engine : ICommands
     readonly List<Conn> conns = new();
     readonly object L = new();
     bool lockActive; DateTime deadline;
-    bool restrictApplied;                 // true = restricciones NTFS/firewall aplicadas ahora
-    bool restrictDirty = true;            // la config de restricciones cambió: reconciliar en el próximo tick
-    System.Threading.Timer? tick;
+    volatile bool restrictApplied;        // true = restricciones NTFS/firewall aplicadas ahora
+    volatile bool restrictDirty = true;   // la config de restricciones cambió: reconciliar
+    readonly object RL = new();           // serializa el trabajo pesado de restricciones (icacls/firewall)
+    System.Threading.Timer? tick, restrictTimer;
     readonly DateTime started = DateTime.UtcNow;
     DateTime lastLaunch = DateTime.MinValue;
 
@@ -42,8 +43,10 @@ class Engine : ICommands
         new Thread(PipeLoop) { IsBackground = true }.Start();
         StartRemote();
         tick = new System.Threading.Timer(_ => Tick(), null, 1000, 1000);
+        // Restricciones en un hilo aparte: icacls/firewall pueden tardar segundos y NUNCA deben frenar el tick ni el pipe/WS.
+        restrictTimer = new System.Threading.Timer(_ => RestrictWork(), null, 1500, 2000);
     }
-    public void Stop() { tick?.Dispose(); try { remote?.Stop(); } catch { } Log.W("Servicio detenido"); }
+    public void Stop() { tick?.Dispose(); restrictTimer?.Dispose(); try { remote?.Stop(); } catch { } Log.W("Servicio detenido"); }
 
     // ---------- Bucle principal (1 Hz) ----------
     void Tick()
@@ -58,9 +61,6 @@ class Engine : ICommands
                 if (cfg.MaintUntil != null && now >= cfg.MaintUntil) { cfg.MaintUntil = null; Store.Save(cfg); Log.W("Modo mantenimiento terminado"); RPush(); }
                 bool maint = cfg.MaintUntil != null;
                 bool hold = conns.Any(c => c.Hold);
-                // Restricciones (archivos/internet): rigen SIEMPRE salvo mantenimiento o panel desbloqueado.
-                ReconcileRestrict(maint || hold);
-                if (restrictApplied) Restrict.Watchdog(cfg);
                 if (Scheduler.IsAllowed(cfg, now) || maint || hold)
                 {
                     if (lockActive) EndLock();
@@ -82,14 +82,33 @@ class Engine : ICommands
         }
     }
 
-    /// <summary>Aplica o revierte las restricciones según corresponda. suppress = mantenimiento o panel desbloqueado.</summary>
-    void ReconcileRestrict(bool suppress)
+    /// <summary>
+    /// Trabajo de restricciones, fuera del lock principal y del tick. Las restricciones rigen SIEMPRE que la PC
+    /// está en uso, salvo mantenimiento o panel desbloqueado. Toma una foto bajo lock (rápido) y recién después
+    /// corre icacls/firewall (lento) sin bloquear a nadie.
+    /// </summary>
+    void RestrictWork()
     {
-        bool enforce = !suppress;
-        if (!restrictDirty && enforce == restrictApplied) return;
-        try { if (enforce) Restrict.Apply(cfg); else Restrict.RemoveAll(); }
+        if (!Monitor.TryEnter(RL)) return;   // si una pasada anterior sigue corriendo, saltear
+        try
+        {
+            bool enforce; bool sinInet; List<Bloqueo> snap; bool reconcile;
+            lock (L)
+            {
+                enforce = cfg.MaintUntil == null && !conns.Any(c => c.Hold);
+                sinInet = cfg.SinInternet;
+                snap = cfg.Bloqueos.Select(b => new Bloqueo { Id = b.Id, Ruta = b.Ruta, Tipo = b.Tipo, Activo = b.Activo }).ToList();
+                reconcile = restrictDirty || enforce != restrictApplied;
+            }
+            if (reconcile)
+            {
+                if (enforce) Restrict.Apply(snap, sinInet); else Restrict.RemoveAll();
+                restrictApplied = enforce; restrictDirty = false;
+            }
+            if (enforce && restrictApplied) Restrict.Watchdog(snap);
+        }
         catch (Exception e) { Log.W("Restrict: " + e.Message); }
-        restrictApplied = enforce; restrictDirty = false;
+        finally { Monitor.Exit(RL); }
     }
 
     void StartLock(DateTime now)

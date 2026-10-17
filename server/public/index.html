@@ -383,6 +383,9 @@ function showPendientes(pend){
     }
     if(p.cmd==='gracia') return box(`<b>Tiempo de gracia:</b> ${p.seg} s`);
     if(p.cmd==='extra') return box(`<b>Tiempo extra:</b> ${p.min} min`);
+    if(p.cmd==='internet') return box(`<b>Internet:</b> ${p.sinInternet?'bloquear':'habilitar'}`);
+    if(p.cmd==='bloq_set') return box(`<b>${p.activo?'Activar':'Desactivar'} bloqueo</b>`);
+    if(p.cmd==='bloq_del') return box(`<b>Quitar de la lista</b>`);
     return box(p.cmd);
   }).join('');
   const ov=$(`<div class="overlay"><div class="dialog" style="max-height:82vh;overflow:auto;text-align:left">
@@ -433,15 +436,22 @@ function viewRestric(){
   app.appendChild(body);
   loadRestric();
 }
+let lastPend=null;
 async function loadRestric(){
   let online=false;
-  try{ const d=await api('/api/status'); online=d.online; if(d.status){ lastBloq=d.status.bloqueos||[]; lastInet=!!d.status.sinInternet; } }
+  try{ const d=await api('/api/status'); online=d.online; if(d.status){ lastBloq=d.status.bloqueos||[]; lastInet=!!d.status.sinInternet; lastPend=d.status.pendientes||null; } }
   catch{}
   if(lastBloq===null) lastBloq=[];
   const body=document.getElementById('rbody'); if(body) renderRestric(body, online);
 }
 function renderRestric(body, online){
   body.innerHTML='';
+  const pend = lastPend && lastPend.length ? lastPend.filter(p=>['internet','bloq_set','bloq_del'].includes(p.cmd)) : null;
+  if(pend && pend.length){
+    const pb=$(`<button class="badge b-orange" style="margin:0 0 12px;width:100%;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">⏳ Pendientes de aplicar (${pend.length}) ›</button>`);
+    pb.onclick=()=>showPendientes(pend);
+    body.appendChild(pb);
+  }
   const inetCard=$(`<div class="card" style="padding:14px"><div class="itemrow" style="margin:0;background:none;padding:0">
      <div class="ic">${I.globe}</div><div class="info"><div class="nm">Bloquear internet</div>
      <div class="pt">Corta la red del equipo mientras está en uso</div></div>
@@ -480,7 +490,7 @@ async function cmdRestric(payload, okMsg){
     else if(!d.ok) toast(d.msg||'No se pudo');
     else { toast(okMsg||'Listo'); if(d.status){ lastBloq=d.status.bloqueos||lastBloq; if(d.status.sinInternet!==undefined) lastInet=!!d.status.sinInternet; } }
   }catch{ toast('Error de conexión'); return; }
-  const body=document.getElementById('rbody'); if(body) renderRestric(body, online);
+  loadRestric();   // refresca estado + lista de pendientes (muestra/oculta el cartel)
 }
 
 // Explorador remoto del disco de la PC (solo online).

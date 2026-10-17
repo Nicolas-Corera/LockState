@@ -51,11 +51,11 @@ static class Restrict
     }
 
     /// <summary>Aplica el estado deseado: primero revierte lo anterior (idempotente) y luego vuelve a aplicar lo activo.</summary>
-    public static void Apply(Cfg cfg)
+    public static void Apply(List<Bloqueo> bloqueos, bool sinInternet)
     {
         RemoveAll();
         var aplicadas = new List<string>();
-        foreach (var b in cfg.Bloqueos)
+        foreach (var b in bloqueos)
         {
             if (!b.Activo || EsProtegida(b.Ruta)) continue;
             string full;
@@ -68,17 +68,17 @@ static class Restrict
         }
         try { if (aplicadas.Count > 0) File.WriteAllLines(Paths.RestrictState, aplicadas); else File.Delete(Paths.RestrictState); } catch { }
 
-        if (cfg.SinInternet)
+        if (sinInternet)
             Ps($"if(-not(Get-NetFirewallRule -DisplayName '{FwRule}' -ErrorAction SilentlyContinue)){{New-NetFirewallRule -DisplayName '{FwRule}' -Direction Outbound -Action Block -LocalUser 'D:(A;;CC;;;{UsersSidBare})' -ErrorAction SilentlyContinue}}");
 
-        Log.W($"Restricciones aplicadas: {aplicadas.Count} ítem(s), internet {(cfg.SinInternet ? "bloqueado" : "libre")}");
+        Log.W($"Restricciones aplicadas: {aplicadas.Count} ítem(s), internet {(sinInternet ? "bloqueado" : "libre")}");
     }
 
     /// <summary>Capa de respaldo: termina cualquier proceso cuya ruta caiga dentro de un ítem activo.</summary>
-    public static void Watchdog(Cfg cfg)
+    public static void Watchdog(List<Bloqueo> bloqueos)
     {
         var files = new List<string>(); var dirs = new List<string>();
-        foreach (var b in cfg.Bloqueos)
+        foreach (var b in bloqueos)
         {
             if (!b.Activo || EsProtegida(b.Ruta)) continue;
             string f; try { f = Path.GetFullPath(b.Ruta).TrimEnd('\\').ToLowerInvariant(); } catch { continue; }
