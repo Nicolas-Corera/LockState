@@ -420,11 +420,16 @@ function renderSchedule(){
       <div class="chk ${d.Restricted?'on':''}">${I.check}</div>
       <div class="name">${DIAS[i]}</div>
       <div class="times">
-        <div class="tbox"><label>Inicio</label><input type="time" lang="es-AR" value="${d.Start||''}" ${d.Restricted?'':'disabled'}></div>
-        <div class="tbox"><label>Fin</label><input type="time" lang="es-AR" value="${d.End||''}" ${d.Restricted?'':'disabled'}></div>
+        <div class="tbox"><label>Inicio</label><input type="text" inputmode="numeric" maxlength="5" placeholder="--:--" value="${d.Start||''}" ${d.Restricted?'':'disabled'}></div>
+        <div class="tbox"><label>Fin</label><input type="text" inputmode="numeric" maxlength="5" placeholder="--:--" value="${d.End||''}" ${d.Restricted?'':'disabled'}></div>
       </div></div>`);
     const chk=row.querySelector('.chk'), ins=row.querySelectorAll('input');
     chk.onclick=()=>{ const on=!chk.classList.contains('on'); chk.classList.toggle('on',on); ins.forEach(x=>x.disabled=!on); };
+    ins.forEach(x=>x.addEventListener('input',()=>{   // máscara HH:MM en 24 h
+      let v=x.value.replace(/\D/g,'').slice(0,4);
+      if(v.length>=3) v=v.slice(0,2)+':'+v.slice(2);
+      x.value=v;
+    }));
     list.appendChild(row);
   });
 
@@ -435,7 +440,8 @@ function renderSchedule(){
     for(const r of rows){
       const on=r.querySelector('.chk').classList.contains('on');
       const [s,f]=[...r.querySelectorAll('input')].map(x=>x.value);
-      if(on&&(!s||!f||f<=s)){ return toast('Revisá los horarios (fin posterior al inicio)'); }
+      const ok=v=>/^([01]\d|2[0-3]):[0-5]\d$/.test(v);
+      if(on&&(!ok(s)||!ok(f)||f<=s)){ return toast('Revisá los horarios (HH:MM 24h, fin posterior al inicio)'); }
       out.push({Restricted:on, Start:on?s:null, End:on?f:null});
     }
     await doCmd(e.target,{cmd:'horario',dias:out},'Horario guardado');
