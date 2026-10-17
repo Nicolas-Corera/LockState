@@ -99,11 +99,14 @@ class Engine : ICommands
                 sinInet = cfg.SinInternet;
                 snap = cfg.Bloqueos.Select(b => new Bloqueo { Id = b.Id, Ruta = b.Ruta, Tipo = b.Tipo, Activo = b.Activo }).ToList();
                 reconcile = restrictDirty || enforce != restrictApplied;
+                // Limpiar el flag YA, bajo lock y antes del trabajo lento: si la config cambia durante Apply,
+                // se vuelve a marcar dirty y se toma en la próxima pasada (evita perder un cambio).
+                if (reconcile) restrictDirty = false;
             }
             if (reconcile)
             {
                 if (enforce) Restrict.Apply(snap, sinInet); else Restrict.RemoveAll();
-                restrictApplied = enforce; restrictDirty = false;
+                restrictApplied = enforce;
             }
             if (enforce && restrictApplied) Restrict.Watchdog(snap);
         }

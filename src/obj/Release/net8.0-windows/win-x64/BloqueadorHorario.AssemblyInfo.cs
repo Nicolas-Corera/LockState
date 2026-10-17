@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("BloqueadorHorario")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Release")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8314d9320c96e14a111679416355badb989c00a2")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4fa76abb5bcfdaba919d6de0758514847446f5f9")]
 [assembly: System.Reflection.AssemblyProductAttribute("BloqueadorHorario")]
 [assembly: System.Reflection.AssemblyTitleAttribute("BloqueadorHorario")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
