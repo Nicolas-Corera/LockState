@@ -327,9 +327,11 @@ class PanelForm : Form
     static string ItemLabel(Bloqueo b) => (b.Tipo == "carpeta" ? "📁  " : "📄  ") + b.Ruta;
     void AddItem(string ruta, string tipo)
     {
+        ruta = Restrict.Resolve(ruta);   // acceso directo (.lnk) -> bloquear el destino real
         if (Restrict.EsProtegida(ruta)) { Dlg.Show("Esa ruta no se puede bloquear (es del sistema o del propio programa)."); return; }
         string full; try { full = Path.GetFullPath(ruta).TrimEnd('\\'); } catch { return; }
         if (bloq.Any(x => string.Equals(x.Ruta, full, StringComparison.OrdinalIgnoreCase))) { Dlg.Show("Esa ruta ya está en la lista."); return; }
+        tipo = Directory.Exists(full) ? "carpeta" : "archivo";
         var b = new Bloqueo { Id = "", Ruta = full, Tipo = tipo, Activo = true };
         bloq.Add(b); clb.Items.Add(ItemLabel(b), true); MarkDirty();
     }

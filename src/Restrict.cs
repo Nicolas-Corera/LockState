@@ -28,6 +28,22 @@ static class Restrict
         return false;
     }
 
+    /// <summary>Si la ruta es un acceso directo (.lnk), devuelve su destino real (el .exe). Si no, la ruta tal cual.</summary>
+    public static string Resolve(string ruta)
+    {
+        if (string.IsNullOrWhiteSpace(ruta) || !ruta.EndsWith(".lnk", StringComparison.OrdinalIgnoreCase)) return ruta;
+        try
+        {
+            var t = Type.GetTypeFromProgID("WScript.Shell");
+            if (t == null) return ruta;
+            dynamic sh = Activator.CreateInstance(t)!;
+            dynamic sc = sh.CreateShortcut(ruta);
+            string target = sc.TargetPath;
+            return string.IsNullOrWhiteSpace(target) ? ruta : target;
+        }
+        catch (Exception e) { Log.W("Resolve lnk: " + e.Message); return ruta; }
+    }
+
     static void Icacls(string args) => Run("icacls.exe", args);
     static void Ps(string cmd) => Run("powershell.exe", "-NoProfile -NonInteractive -WindowStyle Hidden -Command \"" + cmd + "\"");
     static void Run(string exe, string args)

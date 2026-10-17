@@ -333,12 +333,14 @@ class Engine : ICommands
     public void RemoteBloqAdd(string? ruta, string? tipo)
     {
         if (string.IsNullOrWhiteSpace(ruta)) throw new Exception("Ruta vacía");
+        ruta = Restrict.Resolve(ruta);   // acceso directo (.lnk) -> bloquear el destino real
         if (Restrict.EsProtegida(ruta)) throw new Exception("Esa ruta no se puede bloquear");
         lock (L)
         {
             var full = Path.GetFullPath(ruta).TrimEnd('\\');
+            var t = Directory.Exists(full) ? "carpeta" : "archivo";   // derivar del destino resuelto
             if (cfg.Bloqueos.Any(x => string.Equals(x.Ruta, full, StringComparison.OrdinalIgnoreCase))) throw new Exception("Ya está en la lista");
-            cfg.Bloqueos.Add(new Bloqueo { Id = Tok(6), Ruta = full, Tipo = tipo == "carpeta" ? "carpeta" : "archivo", Activo = true });
+            cfg.Bloqueos.Add(new Bloqueo { Id = Tok(6), Ruta = full, Tipo = t, Activo = true });
             Log.W("Remoto: ítem agregado -> " + full);
             RestrictChanged();
         }
