@@ -46,9 +46,28 @@ export class PcRoom {
   // aunque el cierre del WebSocket no haya llegado (apagado brusco, corte de red, suspensión).
   isOnline() { return !!this.pc && (Date.now() - this.lastSeen) < 25000; }
 
-  broadcast() {
-    const msg = JSON.stringify({ online: this.isOnline(), status: this.lastStatus || null });
+  async pendientes() {
+    const q = await this.state.storage.list({ prefix: "q:" });
+    return [...q.keys()].map((k) => k.slice(2));
+  }
+
+  async broadcast() {
+    const pend = await this.pendientes();
+    const st = this.lastStatus ? { ...this.lastStatus, pendientes: pend } : (pend.length ? { pendientes: pend } : null);
+    const msg = JSON.stringify({ online: this.isOnline(), status: st });
     for (const ph of this.phones) { try { ph.send(msg); } catch { this.phones.delete(ph); } }
+  }
+
+  // Al conectarse la PC, le reenvía los comandos encolados (descarta los de más de 30 días).
+  async flushQueue(server) {
+    const q = await this.state.storage.list({ prefix: "q:" });
+    const items = [];
+    const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
+    for (const [k, v] of q) {
+      if (v.ts && v.ts < cutoff) { await this.state.storage.delete(k); continue; }
+      items.push(v);
+    }
+    if (items.length) { try { server.send(JSON.stringify({ t: "queued", items })); } catch {} }
   }
 
   // Se programa en cada señal de la PC: si venció sin señal nueva, avisa "desconectada".
@@ -123,6 +142,13 @@ export class PcRoom {
       await this.state.storage.put("pcToken", m.token);
       await this.state.storage.put("phoneKey", m.phoneKey);
       try { server.send(JSON.stringify({ t: "ok" })); } catch {}
+      await this.flushQueue(server);
+      this.broadcast();
+      return;
+    }
+    if (m.t === "qack") {
+      // La PC confirmó qué comandos de la cola aplicó: se borran (los no confirmados se reintentan).
+      for (const cmd of m.cmds || []) await this.state.storage.delete("q:" + cmd);
       this.broadcast();
       return;
     }
@@ -153,14 +179,26 @@ export class PcRoom {
   // ---------- Lado celular (HTTP) ----------
   async handleStatus(req) {
     if (!this.authPhone(req)) return json({ error: "no autorizado" }, 401);
-    return json({ online: this.isOnline(), status: this.lastStatus || null });
+    const pend = await this.pendientes();
+    const st = this.lastStatus ? { ...this.lastStatus, pendientes: pend } : (pend.length ? { pendientes: pend } : null);
+    return json({ online: this.isOnline(), status: st });
   }
 
   async handleCmd(req) {
     if (!this.authPhone(req)) return json({ error: "no autorizado" }, 401);
     const body = await req.json().catch(() => ({}));
-    // Si la PC está offline NO se encola nada (evita apagados/cambios tardíos inesperados).
-    if (!this.isOnline()) return json({ online: false, msg: "PC sin conexión" });
+    // Si la PC está offline: los cambios de "último gana" se guardan en la nube y se aplican al encender.
+    // "apagar" NUNCA se encola (evita apagados tardíos inesperados).
+    if (!this.isOnline()) {
+      const cmd = body.cmd;
+      if (cmd === "extra" || cmd === "gracia" || cmd === "horario") {
+        await this.state.storage.put("q:" + cmd, {
+          cmd, min: body.min, seg: body.seg, dias: body.dias, ts: Date.now(),
+        });
+        return json({ online: false, queued: true, msg: "Guardado en la nube; se aplicará al encender la PC" });
+      }
+      return json({ online: false, msg: "PC sin conexión" });
+    }
     const id = "r" + (++this.seq);
     const res = await new Promise((resolve) => {
       const timer = setTimeout(() => { this.pending.delete(id); resolve({ ok: false, msg: "La PC no respondió" }); }, 8000);

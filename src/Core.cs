@@ -62,6 +62,7 @@ class Cfg
     public string? PcToken { get; set; }              // auth de la PC contra el servidor
     public string? PhoneKey { get; set; }             // auth del celular; cambiarlo revoca el celu
     public int RemoteExtraCapMinutes { get; set; } = 240; // tope de extra por comando remoto
+    public long LocalChangedTs { get; set; }          // ms UTC del último cambio de horario hecho en la PC (para no pisarlo con cola vieja)
 }
 
 /// <summary>Config cifrada con DPAPI (máquina). Contraseña solo como hash PBKDF2-SHA256.</summary>

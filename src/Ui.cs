@@ -192,7 +192,12 @@ class PanelForm : Form
     readonly NumericUpDown extra, grace, maintMin;
     readonly TextBox sc;
     readonly CheckBox maint;
-    readonly Cfg d;
+    Cfg d;
+    bool dirty;                 // el usuario tocó algo sin guardar: no pisar con un cambio remoto
+    bool loading;               // true mientras se poblan los controles: ignora los eventos de cambio
+    Label? aviso;               // "cambios nuevos desde el celular"
+    Button? recargar;
+    Action? onCfg;
 
     public PanelForm()
     {
@@ -200,6 +205,7 @@ class PanelForm : Form
         StartPosition = FormStartPosition.CenterScreen; FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false; TopMost = true;
         var js = Link.Req("GETCFG");
         d = js != null && js.StartsWith("{") ? JsonSerializer.Deserialize<Cfg>(js)! : new Cfg();
+        loading = true;
 
         // --- Horario semanal ---
         var a = Ui.P(this, 20, 15, 860, 340);
@@ -215,7 +221,9 @@ class PanelForm : Form
             var day = d.Days[i];
             chk[i].Checked = day.Restricted;
             Set(ini[i], day.Start); Set(fin[i], day.End);
-            chk[i].CheckedChanged += (_, _) => Toggle(k);
+            chk[i].CheckedChanged += (_, _) => { Toggle(k); MarkDirty(); };
+            ini[i].SelectedIndexChanged += (_, _) => MarkDirty();
+            fin[i].SelectedIndexChanged += (_, _) => MarkDirty();
             Toggle(i);
         }
 
@@ -233,6 +241,7 @@ class PanelForm : Form
         var ch = Ui.B(c, "Cambiar", 360, 43, 160, 30);
         ch.Click += (_, _) => { using var kc = new KeyCapture(); if (kc.ShowDialog(this) == DialogResult.OK) sc.Text = kc.Result; };
         Ui.L(c, "Ventana de gracia (segundos)", 20, 86); grace = Ui.N(c, 240, 83, 70, 600); grace.Value = Math.Clamp(d.GraceSeconds, 0, 600);
+        grace.ValueChanged += (_, _) => MarkDirty();
         var cp = Ui.B(c, "Cambiar contraseña", 330, 80, 190, 30);
         cp.Click += (_, _) =>
         {
@@ -248,6 +257,13 @@ class PanelForm : Form
         maint.CheckedChanged += (_, _) => maint.Text = maint.Checked ? "Activado" : "Desactivado";
         maint.Checked = d.MaintOn; maint.Text = maint.Checked ? "Activado" : "Desactivado"; c.Controls.Add(maint);
         Ui.L(c, "Duración (min)", 315, 121); maintMin = Ui.N(c, 430, 118, 70, 1440); maintMin.Value = Math.Clamp(d.MaintMinutes, 0, 1440);
+        maint.CheckedChanged += (_, _) => MarkDirty(); maintMin.ValueChanged += (_, _) => MarkDirty();
+
+        // Aviso de cambios remotos (oculto hasta que llega un !CFG mientras hay ediciones sin guardar).
+        aviso = Ui.L(this, "", 210, 542, 420, 10, false, Ui.Mut); aviso.AutoSize = true;
+        recargar = Ui.B(this, "Recargar", 520, 530, 110, 40);
+        recargar.Visible = false;
+        recargar.Click += (_, _) => { dirty = false; aviso!.Text = ""; recargar!.Visible = false; Reload(); };
 
         var remoto = Ui.B(this, "Control remoto…", 20, 530, 180, 40);
         remoto.Click += (_, _) => { using var rf = new RemoteForm(); rf.ShowDialog(this); };
@@ -255,6 +271,47 @@ class PanelForm : Form
         var close = Ui.B(this, "Cerrar", 770, 530, 110, 40);
         close.Click += (_, _) => Close();
         save.Click += (_, _) => Save();
+
+        loading = false;
+        // El servicio avisa (!CFG) cuando la config cambió, p. ej. desde el celular. Refrescar en vivo.
+        onCfg = () => { try { BeginInvoke(new Action(OnRemoteCfg)); } catch { } };
+        Agent.CfgChanged += onCfg;
+        FormClosed += (_, _) => { if (onCfg != null) Agent.CfgChanged -= onCfg; };
+    }
+
+    void MarkDirty() { if (!loading) dirty = true; }
+
+    // Llega un cambio remoto: si no hay ediciones sin guardar, recarga directo; si las hay, avisa y ofrece Recargar.
+    void OnRemoteCfg()
+    {
+        if (!dirty) { Reload(); return; }
+        if (aviso != null) aviso.Text = "Hay cambios nuevos desde el celular.";
+        if (recargar != null) recargar.Visible = true;
+    }
+
+    // Vuelve a pedir la config al servicio y repuebla todos los controles.
+    void Reload()
+    {
+        var js = Link.Req("GETCFG");
+        if (js == null || !js.StartsWith("{")) return;
+        d = JsonSerializer.Deserialize<Cfg>(js)!;
+        loading = true;
+        try
+        {
+            for (int i = 0; i < 7; i++)
+            {
+                var day = d.Days[i];
+                chk[i].Checked = day.Restricted;
+                Set(ini[i], day.Start); Set(fin[i], day.End);
+                Toggle(i);
+            }
+            extra.Value = Math.Clamp(d.ExtraMinutes, 0, 1440);
+            sc.Text = d.Shortcut;
+            grace.Value = Math.Clamp(d.GraceSeconds, 0, 600);
+            maint.Checked = d.MaintOn; maint.Text = maint.Checked ? "Activado" : "Desactivado";
+            maintMin.Value = Math.Clamp(d.MaintMinutes, 0, 1440);
+        }
+        finally { loading = false; dirty = false; }
     }
 
     static void Set(ComboBox c, string? v)
