@@ -274,7 +274,7 @@ function openWs(){
   }catch{}
 }
 function applyStatus(d){
-  if(d&&d.status&&d.status.dias) lastDias=d.status.dias;
+  if(d&&d.status&&d.status.dias){ lastDias=d.status.dias; baseDias=d.status.dias; }
   if(mainRefs){ paintStatus(mainRefs.card, d||{online:false}, mainRefs.addBtn, mainRefs.offBtn); mainRefs.grBtn.disabled=false; }
 }
 function revoked(){ closeWs(); clearInterval(pollTimer); LS.del('ch_pair'); toast('La PC te desvinculó. Volvé a vincular.'); render(); }
@@ -441,10 +441,10 @@ function viewRestric(){
   app.appendChild(body);
   loadRestric();
 }
-let lastPend=null;
+let lastPend=null, baseDias=null;
 async function loadRestric(){
   let online=false;
-  try{ const d=await api('/api/status'); online=d.online; if(d.status){ lastBloq=d.status.bloqueos||[]; lastInet=!!d.status.sinInternet; lastPend=d.status.pendientes||null; } }
+  try{ const d=await api('/api/status'); online=d.online; if(d.status){ lastBloq=d.status.bloqueos||[]; lastInet=!!d.status.sinInternet; lastPend=d.status.pendientes||null; if(d.status.dias) baseDias=d.status.dias; } }
   catch{}
   if(lastBloq===null) lastBloq=[];
   const body=document.getElementById('rbody'); if(body) renderRestric(body, online);
@@ -502,7 +502,10 @@ function showPendRestric(pend){
     else if(p.cmd==='bloq_del'){ const b=(lastBloq||[]).find(x=>x.Id===p.id); t=`${b?nameOf(b.Ruta):'Ítem'}: se quitará de la lista`; }
     else if(p.cmd==='gracia') t=`Tiempo de gracia → ${p.seg} s`;
     else if(p.cmd==='extra') t=`Tiempo extra → ${p.min} min`;
-    else if(p.cmd==='horario') t=`Horario semanal: se actualizará`;
+    else if(p.cmd==='horario'){ const b=baseDias||[], n=p.dias||[], ch=[];
+      for(let i=0;i<7;i++){ const a=b[i]||{}, x=n[i]||{};
+        if((a.Restricted?1:0)!==(x.Restricted?1:0)||a.Start!==x.Start||a.End!==x.End) ch.push(x.Restricted?`${DIAS[i]}: ${x.Start}–${x.End}`:`${DIAS[i]}: libre`); }
+      t=`Horario — ${ch.length?ch.join(', '):'actualizado'}`; }
     return `<div style="background:var(--field);border-radius:10px;padding:10px 12px;margin-bottom:8px">${t}</div>`;
   }).join('');
   const ov=$(`<div class="overlay"><div class="dialog" style="text-align:left">

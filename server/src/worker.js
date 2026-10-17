@@ -124,7 +124,7 @@ export class PcRoom {
     const drop = () => this.phones.delete(server);
     server.addEventListener("close", drop);
     server.addEventListener("error", drop);
-    try { server.send(JSON.stringify({ online: this.isOnline(), status: this.lastStatus || null })); } catch {}
+    this.broadcast();   // envía el estado CON pendientes al celular nuevo (evita el parpadeo del cartel de pendientes)
     return new Response(null, { status: 101, webSocket: client });
   }
 
