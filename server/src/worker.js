@@ -224,6 +224,22 @@ export class PcRoom {
           itemId: body.id, ruta: body.ruta, tipo: body.tipo, activo: body.activo, sinInternet: body.sinInternet }));
       } catch { clearTimeout(timer); this.pending.delete(id); resolve({ ok: false, msg: "PC sin conexión" }); }
     });
+    // Si la PC no respondió (p. ej. recién se apagó pero el server todavía la veía online),
+    // encolar igual los comandos de "último gana" para que se apliquen al encender. "apagar"/"ls" no se encolan.
+    if (!res.ok) {
+      const cmd = body.cmd; let key = null;
+      if (cmd === "extra" || cmd === "gracia" || cmd === "horario") key = "q:" + cmd;
+      else if (cmd === "internet") key = "q:internet";
+      else if (cmd === "bloq_set") key = "q:bloq_set:" + body.id;
+      else if (cmd === "bloq_del") key = "q:bloq_del:" + body.id;
+      if (key) {
+        await this.state.storage.put(key, {
+          cmd, min: body.min, seg: body.seg, dias: body.dias,
+          id: body.id, ruta: body.ruta, activo: body.activo, sinInternet: body.sinInternet, ts: Date.now(),
+        });
+        return json({ online: false, queued: true, msg: "Guardado en la nube; se aplicará al encender la PC" });
+      }
+    }
     return json({ online: true, ok: res.ok, msg: res.msg, status: res.data || this.lastStatus, ls: res.ls });
   }
 
