@@ -409,7 +409,7 @@ function viewSchedule(){
 function tsel(val,dis){
   const st='width:100%;background:var(--field);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:10px 8px;font-size:16px';
   let o='<option value="">--:--</option>';
-  for(let h=0;h<24;h++)for(const m of['00','30']){const v=String(h).padStart(2,'0')+':'+m;o+=`<option value="${v}" ${v===val?'selected':''}>${v}</option>`;}
+  for(let h=0;h<24;h++)for(const m of['00','15','30','45']){const v=String(h).padStart(2,'0')+':'+m;o+=`<option value="${v}" ${v===val?'selected':''}>${v}</option>`;}
   return `<select style="${st}" ${dis?'disabled':''}>${o}</select>`;
 }
 
