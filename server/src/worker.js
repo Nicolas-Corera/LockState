@@ -48,7 +48,8 @@ export class PcRoom {
 
   async pendientes() {
     const q = await this.state.storage.list({ prefix: "q:" });
-    return [...q.keys()].map((k) => k.slice(2));
+    // Devuelve el detalle de cada cambio en cola (para mostrarlo en el celular), no solo el tipo.
+    return [...q.values()].map((v) => ({ cmd: v.cmd, min: v.min, seg: v.seg, dias: v.dias }));
   }
 
   async broadcast() {

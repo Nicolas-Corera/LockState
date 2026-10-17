@@ -339,11 +339,32 @@ function paintStatus(card, d, addBtn, offBtn){
   if(!online) card.appendChild($(`<div class="muted" style="font-size:13px;margin:-4px 0 6px">Puede estar apagada o sin internet.</div>`));
   const pend = s && s.pendientes && s.pendientes.length ? s.pendientes : null;
   if(pend){
-    const nombres={extra:'tiempo extra',gracia:'tiempo de gracia',horario:'horario'};
-    const txt=pend.map(x=>nombres[x]||x).join(', ');
-    card.appendChild($(`<div class="badge b-orange" style="margin:2px 0 8px">⏳ Pendiente de aplicar: ${txt}</div>`));
+    const b=$(`<button class="badge b-orange" style="margin:2px 0 8px;width:100%;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">⏳ Pendientes de aplicar (${pend.length}) ›</button>`);
+    b.onclick=()=>showPendientes(pend);
+    card.appendChild(b);
   }
   rows.forEach(r=>card.appendChild($(`<div class="row"><span class="k">${r[0]}</span><span class="v">${r[1]}</span></div>`)));
+}
+
+// Modal scrolleable con el detalle de cada cambio en cola.
+function showPendientes(pend){
+  const parts=pend.map(p=>{
+    const box=(h)=>`<div style="background:var(--field);border-radius:10px;padding:10px 12px;margin-bottom:8px">${h}</div>`;
+    if(p.cmd==='horario'){
+      const d=(p.dias||[]).map((x,i)=> x&&x.Restricted?`${DIAS[i]} de ${x.Start} a ${x.End}`:`${DIAS[i]}: libre todo el día`).join('<br>');
+      return box(`<b>Horario</b><br>${d}`);
+    }
+    if(p.cmd==='gracia') return box(`<b>Tiempo de gracia:</b> ${p.seg} s`);
+    if(p.cmd==='extra') return box(`<b>Tiempo extra:</b> ${p.min} min`);
+    return box(p.cmd);
+  }).join('');
+  const ov=$(`<div class="overlay"><div class="dialog" style="max-height:82vh;overflow:auto;text-align:left">
+     <h3 style="text-align:center">Pendientes de aplicar</h3>
+     <p class="muted" style="text-align:center;margin-top:-4px">Se aplicarán cuando la PC se encienda.</p>
+     ${parts}
+     <div class="acts"><button class="btn primary" id="c">Cerrar</button></div></div></div>`);
+  document.body.appendChild(ov);
+  ov.querySelector('#c').onclick=()=>ov.remove();
 }
 
 function fmtFecha(s){ // "2026-10-17 08:45:xx" -> "Hoy, 08:45" si es hoy
@@ -378,13 +399,19 @@ function confirmShutdown(srcBtn){
 // ---------- Pantalla 3: Horario semanal ----------
 function viewSchedule(){
   clearInterval(pollTimer);
-  if(!lastDias){
-    const def=Array.from({length:7},()=>({Restricted:false,Start:null,End:null}));
-    api('/api/status').then(d=>{ lastDias=(d.status&&d.status.dias)||def; renderSchedule(); })
-                      .catch(()=>{ lastDias=def; renderSchedule(); });
-    return;
-  }
-  renderSchedule();
+  // Siempre pedir el horario fresco al abrir, así refleja cambios hechos desde la PC.
+  const def=Array.from({length:7},()=>({Restricted:false,Start:null,End:null}));
+  api('/api/status').then(d=>{ lastDias=(d.status&&d.status.dias)||lastDias||def; renderSchedule(); })
+                    .catch(()=>{ if(!lastDias) lastDias=def; renderSchedule(); });
+}
+
+// Selectores de hora/minuto en formato 24 h (garantizado, sin depender del idioma del celular).
+function hhmm(val){ const p=(val||'').split(':'); return [p[0]||'',p[1]||'']; }
+function selOpts(max,sel){ let o='<option value=""></option>'; for(let n=0;n<max;n++){const v=String(n).padStart(2,'0');o+=`<option value="${v}" ${v===sel?'selected':''}>${v}</option>`;} return o; }
+function timeField(label,val,dis){ const [h,m]=hhmm(val); const st='background:var(--field);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px 6px;font-size:16px';
+  return `<div class="tbox"><label>${label}</label><div style="display:flex;align-items:center;gap:4px">
+    <select class="th" style="${st}" ${dis?'disabled':''}>${selOpts(24,h)}</select><span>:</span>
+    <select class="tm" style="${st}" ${dis?'disabled':''}>${selOpts(60,m)}</select></div></div>`;
 }
 
 function renderSchedule(){
@@ -401,11 +428,8 @@ function renderSchedule(){
     const row=$(`<div class="day">
       <div class="chk ${d.Restricted?'on':''}">${I.check}</div>
       <div class="name">${DIAS[i]}</div>
-      <div class="times">
-        <div class="tbox"><label>Inicio</label><input type="time" value="${d.Start||''}" ${d.Restricted?'':'disabled'}></div>
-        <div class="tbox"><label>Fin</label><input type="time" value="${d.End||''}" ${d.Restricted?'':'disabled'}></div>
-      </div></div>`);
-    const chk=row.querySelector('.chk'), ins=row.querySelectorAll('input');
+      <div class="times">${timeField('Inicio',d.Start,!d.Restricted)}${timeField('Fin',d.End,!d.Restricted)}</div></div>`);
+    const chk=row.querySelector('.chk'), ins=row.querySelectorAll('select');
     chk.onclick=()=>{ const on=!chk.classList.contains('on'); chk.classList.toggle('on',on); ins.forEach(x=>x.disabled=!on); };
     list.appendChild(row);
   });
@@ -416,8 +440,10 @@ function renderSchedule(){
     const rows=[...list.querySelectorAll('.day')]; const out=[];
     for(const r of rows){
       const on=r.querySelector('.chk').classList.contains('on');
-      const [s,f]=[...r.querySelectorAll('input')].map(x=>x.value);
-      if(on&&(!s||!f||f<=s)){ return toast('Revisá los horarios (fin posterior al inicio)'); }
+      const boxes=[...r.querySelectorAll('.tbox')];
+      const rd=(b)=>{ const h=b.querySelector('.th').value, m=b.querySelector('.tm').value; return (h&&m)?`${h}:${m}`:''; };
+      const s=rd(boxes[0]), f=rd(boxes[1]);
+      if(on&&(!s||!f||f<=s)){ return toast('Revisá los horarios (elegí inicio y fin, con fin posterior al inicio)'); }
       out.push({Restricted:on, Start:on?s:null, End:on?f:null});
     }
     await doCmd(e.target,{cmd:'horario',dias:out},'Horario guardado');

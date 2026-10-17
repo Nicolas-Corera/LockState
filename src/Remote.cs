@@ -91,7 +91,7 @@ class Remote : IRemoteChannel
             var root = doc.RootElement;
             var t = root.GetProperty("t").GetString();
             if (t == "code") { codeWaiter?.TrySetResult(root.TryGetProperty("code", out var c) ? c.GetString() : null); return; }
-            if (t == "queued") { _ = Task.Run(() => ApplyQueued(root.GetProperty("items"), ct)); return; }
+            if (t == "queued") { var payload = json; _ = Task.Run(() => ApplyQueued(payload, ct)); return; }
             if (t == "cmd")
             {
                 var id = root.TryGetProperty("id", out var idp) ? idp.GetString() : null;
@@ -137,8 +137,10 @@ class Remote : IRemoteChannel
     }
 
     /// <summary>Aplica los comandos que quedaron en la cola mientras la PC estuvo apagada (los que llegaron por "queued").</summary>
-    async Task ApplyQueued(JsonElement items, CancellationToken ct)
+    async Task ApplyQueued(string json, CancellationToken ct)
     {
+        using var doc = JsonDocument.Parse(json);   // el documento vive dentro de este método (antes se liberaba antes de tiempo)
+        var items = doc.RootElement.GetProperty("items");
         var aplicados = new List<string>();
         foreach (var it in items.EnumerateArray())
         {
