@@ -367,9 +367,10 @@ function paintStatus(card, d, addBtn, offBtn){
   if(!online) card.appendChild($(`<div class="muted" style="font-size:13px;margin:-4px 0 6px">Puede estar apagada o sin internet.</div>`));
   const pend = s && s.pendientes && s.pendientes.length ? s.pendientes : null;
   if(pend){
-    const b=$(`<button class="badge b-orange" style="margin:2px 0 8px;width:100%;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">⏳ Pendientes de aplicar (${pend.length}) ›</button>`);
-    b.onclick=()=>showPendientes(pend);
-    card.appendChild(b);
+    if(s.bloqueos) lastBloq=s.bloqueos; if(s.sinInternet!==undefined) lastInet=!!s.sinInternet;
+    const link=$(`<span style="display:inline-block;margin:2px 0 8px;color:var(--blue);text-decoration:underline;cursor:pointer;font-size:15px">Pendientes de aplicar (${pend.length})</span>`);
+    link.onclick=()=>showPendRestric(pend);
+    card.appendChild(link);
   }
   rows.forEach(r=>card.appendChild($(`<div class="row"><span class="k">${r[0]}</span><span class="v">${r[1]}</span></div>`)));
 }
@@ -499,6 +500,9 @@ function showPendRestric(pend){
     if(p.cmd==='internet') t=`Internet: ${inet(lastInet)} → ${inet(!!p.sinInternet)}`;
     else if(p.cmd==='bloq_set'){ const b=(lastBloq||[]).find(x=>x.Id===p.id); t=`${b?nameOf(b.Ruta):'Ítem'}: ${b&&b.Activo?'Activado':'Desactivado'} → ${p.activo?'Activado':'Desactivado'}`; }
     else if(p.cmd==='bloq_del'){ const b=(lastBloq||[]).find(x=>x.Id===p.id); t=`${b?nameOf(b.Ruta):'Ítem'}: se quitará de la lista`; }
+    else if(p.cmd==='gracia') t=`Tiempo de gracia → ${p.seg} s`;
+    else if(p.cmd==='extra') t=`Tiempo extra → ${p.min} min`;
+    else if(p.cmd==='horario') t=`Horario semanal: se actualizará`;
     return `<div style="background:var(--field);border-radius:10px;padding:10px 12px;margin-bottom:8px">${t}</div>`;
   }).join('');
   const ov=$(`<div class="overlay"><div class="dialog" style="text-align:left">
@@ -592,8 +596,12 @@ function viewSchedule(){
   clearInterval(pollTimer);
   // Siempre pedir el horario fresco al abrir, así refleja cambios hechos desde la PC.
   const def=Array.from({length:7},()=>({Restricted:false,Start:null,End:null}));
-  api('/api/status').then(d=>{ lastDias=(d.status&&d.status.dias)||lastDias||def; renderSchedule(); })
-                    .catch(()=>{ if(!lastDias) lastDias=def; renderSchedule(); });
+  api('/api/status').then(d=>{
+    let dias=(d.status&&d.status.dias)||lastDias||def;
+    const ph=((d.status&&d.status.pendientes)||[]).find(p=>p.cmd==='horario');  // si hay horario pendiente, mostrarlo (no se "borra" al recargar)
+    if(ph&&ph.dias) dias=ph.dias;
+    lastDias=dias; renderSchedule();
+  }).catch(()=>{ if(!lastDias) lastDias=def; renderSchedule(); });
 }
 
 // Un solo select por campo, horas 24h cada 30 min (como en la PC).
