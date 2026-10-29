@@ -128,13 +128,34 @@ static class Store
 /// <summary>Hora de internet (SNTP). Devuelve null si no hay red.</summary>
 static class Ntp
 {
+    static readonly string[] Hosts = { "pool.ntp.org", "time.cloudflare.com", "time.google.com", "time.windows.com" };
+    /// <summary>Prueba varios servidores NTP y, si el UDP 123 está bloqueado, la cabecera Date de una web por HTTPS.</summary>
     public static DateTime? Get()
+    {
+        foreach (var h in Hosts) { var t = One(h); if (t != null) return t; }
+        return Https();
+    }
+    static DateTime? Https()
+    {
+        foreach (var url in new[] { "https://www.cloudflare.com", "https://www.google.com" })
+        {
+            try
+            {
+                using var c = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(4) };
+                using var r = c.Send(new System.Net.Http.HttpRequestMessage(System.Net.Http.HttpMethod.Head, url));
+                if (r.Headers.Date is { } d) return d.UtcDateTime;
+            }
+            catch { }
+        }
+        return null;
+    }
+    static DateTime? One(string host)
     {
         try
         {
             using var u = new UdpClient();
-            u.Client.ReceiveTimeout = 3000;
-            u.Connect("pool.ntp.org", 123);
+            u.Client.ReceiveTimeout = 2000;
+            u.Connect(host, 123);
             var b = new byte[48]; b[0] = 0x1B;
             u.Send(b, 48);
             IPEndPoint? ep = null;

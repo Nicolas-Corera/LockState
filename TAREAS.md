@@ -145,3 +145,10 @@ mantenimiento o panel desbloqueado con contraseña. Desde el celular se agregan 
 - **Cambio:** solo log. Al iniciar el servicio se registra el horario cargado y reloj servicio vs Windows; al iniciar un bloqueo se registra día, ventana, extra y ambos relojes. Sin cambios de comportamiento.
 - **Archivo tocado:** `src/Service.cs`.
 - **Si vuelve a pasar:** `Get-Content "$env:ProgramData\BloqueadorHorario\log.txt" -Tail 400 | Select-String "BLOQUEO|Horario cargado|Reloj|Remoto"`.
+
+### Resultado de las pruebas en VM y arreglo del reloj
+- **Prueba A (horario pendiente del celular con la PC apagada):** OK, se aplicó al prender y desbloqueó solo. Hipótesis descartada.
+- **Prueba B (reloj adelantado + NTP bloqueado):** reproducido. El servicio quedó con la hora mala ("Reloj atrasado detectado: se mantiene hora confiable interna") y el celular mostraba esa hora (22:14 vs 16:14 real). Con la hora mala aplica el horario a otra hora y bloquea.
+- **Causa:** `Clock` solo se corregía por NTP contra un único servidor (`pool.ntp.org`, UDP 123). Si ese puerto/servidor falla, nunca se corrige.
+- **Arreglo (`src/Core.cs`, `Ntp.Get`):** prueba 4 servidores NTP (pool.ntp.org, time.cloudflare.com, time.google.com, time.windows.com) y, si todos fallan, toma la hora de la cabecera `Date` de una web por HTTPS (cloudflare.com / google.com). El anti-manipulación sigue igual: un reloj atrasado se ignora y se corrige con estas fuentes.
+- **Pendiente de probar en VM:** repetir la Prueba B con el exe nuevo; esperado: "Reloj atrasado detectado: corregido con NTP" en ≤1 min.
