@@ -40,6 +40,7 @@ class Engine : ICommands
         Task.Run(RestoreNet);
         Clock.Init();
         cfg = Store.Load();
+        Log.W("Horario cargado: " + string.Join(" | ", cfg.Days.Select((x, i) => $"{i}:{(x.Restricted ? x.Start + "-" + x.End : "libre")}")) + $" | reloj servicio {Clock.Now:yyyy-MM-dd HH:mm:ss} vs Windows {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         new Thread(PipeLoop) { IsBackground = true }.Start();
         StartRemote();
         tick = new System.Threading.Timer(_ => Tick(), null, 1000, 1000);
@@ -117,7 +118,8 @@ class Engine : ICommands
     void StartLock(DateTime now)
     {
         lockActive = true; deadline = now.AddSeconds(Math.Max(5, cfg.GraceSeconds));
-        Log.W($"BLOQUEO iniciado; apagado a las {deadline:HH:mm:ss}");
+        var dd = cfg.Days[((int)now.DayOfWeek + 6) % 7];
+        Log.W($"BLOQUEO iniciado; apagado a las {deadline:HH:mm:ss} | reloj servicio {now:yyyy-MM-dd HH:mm:ss} ({now.DayOfWeek}) vs Windows {DateTime.Now:yyyy-MM-dd HH:mm:ss} | día restringido={dd.Restricted} {dd.Start}-{dd.End} extra={cfg.ExtraMinutes}min({cfg.ExtraDate})");
         Broadcast(StateMsg()); RPush();
     }
     void EndLock() { lockActive = false; Log.W("Bloqueo terminado / cancelado"); Broadcast(StateMsg()); RPush(); }
